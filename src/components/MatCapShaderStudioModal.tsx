@@ -7,10 +7,14 @@ import { ALL_MATERIAL_PRESETS } from '../presets/materialPresets';
 import { SHADER_PRESETS } from '../presets/shaderPresets';
 import { StudioEngine } from '../core/studioEngine';
 
+import { BrushSettings } from '../types';
+
 interface MatCapShaderStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
   engine?: StudioEngine | null;
+  brushSettings?: BrushSettings;
+  onUpdateBrushSettings?: (settings: Partial<BrushSettings>) => void;
   theme?: 'light' | 'dark';
 }
 
@@ -25,6 +29,8 @@ export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = (
   isOpen,
   onClose,
   engine,
+  brushSettings,
+  onUpdateBrushSettings,
   theme = 'dark'
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -278,6 +284,16 @@ void main() {
         fragmentShader: preset.fragmentShader,
         uniforms: {}
       });
+      onUpdateBrushSettings?.({
+        materialType: 'animated_fx',
+        shaderEffect: 'anime_cel',
+        customShader: {
+          id: preset.id,
+          name: preset.name,
+          vertexShader: preset.vertexShader,
+          fragmentShader: preset.fragmentShader,
+        },
+      });
     } else {
       setMaterialMode('matcap');
       const img = new Image();
@@ -292,9 +308,49 @@ void main() {
           const tex = new THREE.CanvasTexture(canvas);
           tex.needsUpdate = true;
           setTexture(tex);
+          onUpdateBrushSettings?.({
+            materialType: 'matcap',
+            matcapUrl: preset.url,
+            matcapTexture: tex,
+          });
         }
       };
       img.src = preset.url;
+    }
+  };
+
+  const handleApplyToBrush = () => {
+    const preset = ALL_MATERIAL_PRESETS.find((p) => p.id === selectedPresetId);
+    if (preset) {
+      if (preset.type === 'shader') {
+        onUpdateBrushSettings?.({
+          materialType: 'animated_fx',
+          shaderEffect: 'anime_cel',
+          customShader: {
+            id: preset.id,
+            name: preset.name,
+            vertexShader: preset.vertexShader,
+            fragmentShader: preset.fragmentShader,
+          },
+        });
+      } else {
+        onUpdateBrushSettings?.({
+          materialType: 'matcap',
+          matcapUrl: preset.url,
+          matcapTexture: texture || undefined,
+        });
+      }
+    }
+    setAppliedStatus('Applied to Brush!');
+    setTimeout(() => setAppliedStatus(null), 2000);
+    onClose();
+  };
+
+  const handleApplyToModel = () => {
+    if (materialRef.current && engine) {
+      engine.setModelCustomMaterial(materialRef.current.clone());
+      setAppliedStatus('Applied to 3D Model!');
+      setTimeout(() => setAppliedStatus(null), 2500);
     }
   };
 
@@ -449,6 +505,35 @@ void main() {
                 );
               })}
             </div>
+
+            {/* Action Buttons */}
+            <div className="p-3 border-t border-zinc-800 bg-zinc-950/60 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleApplyToBrush}
+                className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                title="Apply this material to your active paint brush"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Apply to Brush</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplyToModel}
+                className="flex-1 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                title="Apply this material to the loaded 3D model"
+              >
+                <Box className="w-3.5 h-3.5" />
+                <span>Apply to Model</span>
+              </button>
+            </div>
+
+            {appliedStatus && (
+              <div className="px-3 pb-2 text-center text-xs font-semibold text-cyan-400 animate-in fade-in">
+                {appliedStatus}
+              </div>
+            )}
           </div>
         </div>
       </div>

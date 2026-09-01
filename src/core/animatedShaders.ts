@@ -316,15 +316,14 @@ export class AnimatedShaderRegistry {
       this.resolution.copy(resolution);
     }
     this.materials.forEach((mat) => {
-      if (mat.uniforms.uTime) {
-        mat.uniforms.uTime.value = timeInSeconds;
-      }
-      if (mat.uniforms.uLightDirection) {
-        mat.uniforms.uLightDirection.value.copy(this.lightDirection);
-      }
-      if (mat.uniforms.uResolution) {
-        mat.uniforms.uResolution.value.copy(this.resolution);
-      }
+      if (mat.uniforms.uTime) mat.uniforms.uTime.value = timeInSeconds;
+      if (mat.uniforms.u_time) mat.uniforms.u_time.value = timeInSeconds;
+      if (mat.uniforms.time) mat.uniforms.time.value = timeInSeconds;
+      if (mat.uniforms.iTime) mat.uniforms.iTime.value = timeInSeconds;
+      if (mat.uniforms.uLightDirection) mat.uniforms.uLightDirection.value.copy(this.lightDirection);
+      if (mat.uniforms.u_light_dir) mat.uniforms.u_light_dir.value.copy(this.lightDirection);
+      if (mat.uniforms.uResolution) mat.uniforms.uResolution.value.copy(this.resolution);
+      if (mat.uniforms.u_resolution) mat.uniforms.u_resolution.value.copy(this.resolution);
     });
   }
 

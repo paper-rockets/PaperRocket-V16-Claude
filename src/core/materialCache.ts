@@ -62,9 +62,11 @@ export class MaterialCache {
     const effect: AnimatedShaderEffect = settings.shaderEffect || 'fire';
 
     const validColor = normalizeHexColor(settings.color, '#38bdf8');
+    const shaderKey = settings.customShader?.id || settings.customShader?.name || effect;
+    const matcapKey = settings.matcapUrl ? settings.matcapUrl.slice(0, 32) : (settings.matcapTexture ? 'has_tex' : 'no_matcap');
 
     // Strict isolation key
-    const key = `${matType}|${effect}|${validColor}|o${effectiveOpacity.toFixed(3)}|r${(settings.roughness ?? 0.35).toFixed(2)}|m${(settings.metalness ?? 0.15).toFixed(2)}|e${(settings.emissiveIntensity ?? 0).toFixed(2)}|${modeKey}|${stencilKey}|p_${patType}_${patScale}_${patInt}_${patAng}_${patContr}|b_${layerBlendMode}`;
+    const key = `${matType}|${shaderKey}|${matcapKey}|${validColor}|o${effectiveOpacity.toFixed(3)}|r${(settings.roughness ?? 0.35).toFixed(2)}|m${(settings.metalness ?? 0.15).toFixed(2)}|e${(settings.emissiveIntensity ?? 0).toFixed(2)}|${modeKey}|${stencilKey}|p_${patType}_${patScale}_${patInt}_${patAng}_${patContr}|b_${layerBlendMode}`;
 
     if (this.cache.has(key)) {
       return this.cache.get(key)!;
@@ -103,38 +105,96 @@ export class MaterialCache {
         polygonOffsetUnits: -3.0,
         toneMapped: false,
       });
-    } else if (matType === 'animated_fx') {
-      // 3. Animated FX Shader Material with Oklab color mixing and standard uniform contracts
-      const speed = EFFECT_SPEEDS[effect] || 1.0;
-      const uniforms = {
-        uColor: { value: new THREE.Vector3(color.r, color.g, color.b) },
-        uOpacity: { value: effectiveOpacity },
-        uTime: { value: performance.now() * 0.001 },
-        uSpeed: { value: speed },
-        uScale: { value: 3.5 },
-        uLightDirection: { value: new THREE.Vector3(1, 2, 1).normalize() },
-        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      };
-
-      const shaderMat = new THREE.ShaderMaterial({
-        uniforms,
-        vertexShader: STANDARD_VERTEX_SHADER,
-        fragmentShader: getEffectFragmentShader(effect),
-        defines: {
-          [`EFFECT_${effect}`]: '',
-        },
-        transparent: !isOpaque || effectiveOpacity < 1.0,
-        depthWrite: isOpaque,
-        depthTest: true,
+    } else if (matType === 'matcap') {
+      // 3. MatCap Material: Dynamic sphere-mapped texture lighting
+      let matcapTex = settings.matcapTexture;
+      if (!matcapTex && settings.matcapUrl) {
+        try {
+          const loader = new THREE.TextureLoader();
+          matcapTex = loader.load(settings.matcapUrl);
+        } catch (_) {}
+      }
+      material = new THREE.MeshMatcapMaterial({
+        color: color,
+        matcap: matcapTex || null,
+        transparent: !isOpaque,
+        opacity: effectiveOpacity,
         side: THREE.DoubleSide,
+        depthTest: true,
+        depthWrite: isOpaque,
         polygonOffset: true,
         polygonOffsetFactor: -3.0,
         polygonOffsetUnits: -3.0,
-        toneMapped: true,
       });
+    } else if (matType === 'animated_fx') {
+      // 4. Animated FX Shader Material (Custom GLSL or standard 27 presets)
+      if (settings.customShader && settings.customShader.fragmentShader) {
+        const customUniforms: Record<string, any> = {
+          uColor: { value: new THREE.Vector3(color.r, color.g, color.b) },
+          u_color: { value: new THREE.Vector3(color.r, color.g, color.b) },
+          u_tint: { value: new THREE.Vector3(color.r, color.g, color.b) },
+          uOpacity: { value: effectiveOpacity },
+          u_opacity: { value: effectiveOpacity },
+          uTime: { value: performance.now() * 0.001 },
+          u_time: { value: performance.now() * 0.001 },
+          time: { value: performance.now() * 0.001 },
+          iTime: { value: performance.now() * 0.001 },
+          uSpeed: { value: 1.0 },
+          uScale: { value: 3.5 },
+          u_steps: { value: 4.0 },
+          u_rim_power: { value: 3.0 },
+          u_roughness: { value: settings.roughness ?? 0.5 },
+          u_light_dir: { value: new THREE.Vector3(1, 2, 1).normalize() },
+          uLightDirection: { value: new THREE.Vector3(1, 2, 1).normalize() },
+          uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+          u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        };
+        const shaderMat = new THREE.ShaderMaterial({
+          uniforms: customUniforms,
+          vertexShader: settings.customShader.vertexShader || STANDARD_VERTEX_SHADER,
+          fragmentShader: settings.customShader.fragmentShader,
+          transparent: !isOpaque || effectiveOpacity < 1.0,
+          depthWrite: isOpaque,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -3.0,
+          polygonOffsetUnits: -3.0,
+        });
+        globalShaderRegistry.register(shaderMat);
+        material = shaderMat;
+      } else {
+        const speed = EFFECT_SPEEDS[effect] || 1.0;
+        const uniforms = {
+          uColor: { value: new THREE.Vector3(color.r, color.g, color.b) },
+          uOpacity: { value: effectiveOpacity },
+          uTime: { value: performance.now() * 0.001 },
+          uSpeed: { value: speed },
+          uScale: { value: 3.5 },
+          uLightDirection: { value: new THREE.Vector3(1, 2, 1).normalize() },
+          uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        };
 
-      globalShaderRegistry.register(shaderMat);
-      material = shaderMat;
+        const shaderMat = new THREE.ShaderMaterial({
+          uniforms,
+          vertexShader: STANDARD_VERTEX_SHADER,
+          fragmentShader: getEffectFragmentShader(effect),
+          defines: {
+            [`EFFECT_${effect}`]: '',
+          },
+          transparent: !isOpaque || effectiveOpacity < 1.0,
+          depthWrite: isOpaque,
+          depthTest: true,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -3.0,
+          polygonOffsetUnits: -3.0,
+          toneMapped: true,
+        });
+
+        globalShaderRegistry.register(shaderMat);
+        material = shaderMat;
+      }
     } else if (matType === 'shaded') {
       // 4. PBR (Lit / Shaded): Dynamic Physically-Based Material responding to scene lighting, shadows & reflections
       material = new THREE.MeshStandardMaterial({

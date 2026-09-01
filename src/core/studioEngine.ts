@@ -3263,6 +3263,20 @@ export class StudioEngine {
     });
   }
 
+  /**
+   * Directly skins the loaded 3D model with a custom ShaderMaterial or MatCap material
+   */
+  public setModelCustomMaterial(material: THREE.Material): void {
+    this.targetMeshes.forEach((mesh) => {
+      if (!mesh.userData.originalMaterial) {
+        mesh.userData.originalMaterial = mesh.material;
+      }
+      MaterialCache.configureModelMaterial(material);
+      mesh.material = material;
+      mesh.material.needsUpdate = true;
+    });
+  }
+
   public setModelOpacity(opacity: number): void {
     this.modelOpacity = opacity;
     this.targetMeshes.forEach((mesh) => {

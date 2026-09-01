@@ -194,7 +194,7 @@ export interface ARSessionState {
 
 export type LightingPreset = 'studio' | 'daylight' | 'neon' | 'sunset' | 'clay_neutral';
 
-export type MaterialType = 'shaded' | 'shadeless' | 'glow' | 'cutout' | 'animated_fx';
+export type MaterialType = 'shaded' | 'shadeless' | 'glow' | 'cutout' | 'animated_fx' | 'matcap';
 
 export type StrokeProfile = 'tube' | 'ribbon' | 'marker' | 'conformal';
 
@@ -266,6 +266,15 @@ export interface BrushSettings {
   materialType: MaterialType;
   shaderEffect?: AnimatedShaderEffect; // 27 animated GLSL shader effects
   animatedEffect?: AnimatedShaderEffect; // alias for shaderEffect
+  matcapUrl?: string; // Data URL or asset path for MatCap
+  matcapTexture?: THREE.Texture; // Cached CanvasTexture / Texture instance
+  customShader?: {
+    id?: string;
+    name?: string;
+    vertexShader?: string;
+    fragmentShader?: string;
+    uniforms?: Record<string, any>;
+  };
   profile: StrokeProfile;
   // Procedural Surface Pattern
   patternType: PatternType;

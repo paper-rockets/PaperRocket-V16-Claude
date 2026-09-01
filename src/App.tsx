@@ -1162,12 +1162,16 @@ export default function App() {
         theme={theme}
       />
 
-      {/* Advanced Color Studio Modal (HSV + OKLCh Polar) */}
+      {/* Advanced Color Studio Modal (HSV + OKLCh Polar + 1-Click Shaders) */}
       <ColorStudioModal
         isOpen={isColorStudioOpen}
         onClose={() => setIsColorStudioOpen(false)}
         currentColor={brushSettings.color || '#38bdf8'}
         onChangeColor={(hex) => setBrushSettings((prev) => ({ ...prev, color: hex }))}
+        onApplyBrushSettings={(newSettings) =>
+          setBrushSettings((prev) => ({ ...prev, ...newSettings }))
+        }
+        onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
         onSampleFromScreen={() => {
           setIsColorStudioOpen(false);
           setTool('eyedropper');

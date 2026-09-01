@@ -33,11 +33,15 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { BrushSettings } from '../types';
+
 interface ColorStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentColor: string;
   onChangeColor: (hex: string) => void;
+  onApplyBrushSettings?: (settings: Partial<BrushSettings>) => void;
+  onApplyToModel?: (material: THREE.Material) => void;
   onSampleFromScreen?: () => void;
   theme?: 'light' | 'dark';
 }
@@ -56,10 +60,16 @@ const CURATED_PALETTES = {
 function MatCapShaderTabContent({
   currentColor,
   onChangeColor,
+  onApplyBrushSettings,
+  onApplyToModel,
+  onClose,
   theme
 }: {
   currentColor: string;
   onChangeColor: (hex: string) => void;
+  onApplyBrushSettings?: (settings: Partial<BrushSettings>) => void;
+  onApplyToModel?: (material: THREE.Material) => void;
+  onClose: () => void;
   theme: 'light' | 'dark';
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -336,6 +346,17 @@ void main() {
         fragmentShader: preset.fragmentShader,
         uniforms: {}
       });
+      onApplyBrushSettings?.({
+        materialType: 'animated_fx',
+        shaderEffect: 'anime_cel',
+        customShader: {
+          id: preset.id,
+          name: preset.name,
+          vertexShader: preset.vertexShader,
+          fragmentShader: preset.fragmentShader,
+        },
+        color: currentColor,
+      });
     } else {
       setMaterialMode('matcap');
       const img = new Image();
@@ -350,6 +371,12 @@ void main() {
           const tex = new THREE.CanvasTexture(canvas);
           tex.needsUpdate = true;
           setTexture(tex);
+          onApplyBrushSettings?.({
+            materialType: 'matcap',
+            matcapUrl: preset.url,
+            matcapTexture: tex,
+            color: currentColor,
+          });
 
           // Sample center pixel to synchronize color picker
           try {
@@ -360,6 +387,39 @@ void main() {
         }
       };
       img.src = preset.url;
+    }
+  };
+
+  const handleApplyToBrushDirect = () => {
+    const preset = ALL_MATERIAL_PRESETS.find((p) => p.id === selectedPresetId);
+    if (preset) {
+      if (preset.type === 'shader') {
+        onApplyBrushSettings?.({
+          materialType: 'animated_fx',
+          shaderEffect: 'anime_cel',
+          customShader: {
+            id: preset.id,
+            name: preset.name,
+            vertexShader: preset.vertexShader,
+            fragmentShader: preset.fragmentShader,
+          },
+          color: currentColor,
+        });
+      } else {
+        onApplyBrushSettings?.({
+          materialType: 'matcap',
+          matcapUrl: preset.url,
+          matcapTexture: texture || undefined,
+          color: currentColor,
+        });
+      }
+    }
+    onClose();
+  };
+
+  const handleApplyToModelDirect = () => {
+    if (materialRef.current && onApplyToModel) {
+      onApplyToModel(materialRef.current.clone());
     }
   };
 
@@ -505,6 +565,29 @@ void main() {
           );
         })}
       </div>
+
+      {/* 1-Click Action Buttons */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={handleApplyToBrushDirect}
+          className="flex-1 py-2 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+          title="Set brush to this Shader or MatCap"
+        >
+          <Zap className="w-3.5 h-3.5" />
+          <span>Apply to Brush</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleApplyToModelDirect}
+          className="flex-1 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+          title="Skin entire 3D model with this Shader or MatCap"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Apply to 3D Model</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -514,6 +597,8 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
   onClose,
   currentColor,
   onChangeColor,
+  onApplyBrushSettings,
+  onApplyToModel,
   onSampleFromScreen,
   theme = 'dark',
 }) => {
@@ -649,15 +734,15 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
 
     ctx.beginPath();
     ctx.arc(satValHandleX, satValHandleY, 6, 0, Math.PI * 2);
-    ctx.fillStyle = currentColor;
+    ctx.fillStyle = '#ffffff';
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 4;
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
     ctx.stroke();
-  }, [hsv, currentColor, theme, radius, innerRadius, squareSize]);
+  }, [hsv, theme, radius, innerRadius, squareSize]);
 
   useEffect(() => {
     if (activeTab === 'wheel') {
@@ -665,35 +750,26 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     }
   }, [activeTab, renderWheel]);
 
-  // Pointer Interaction on HSV Canvas (Outer Ring vs Inner Square)
+  // Pointer tracking for Hue Ring
   const handlePointerDownCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = wheelCanvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = e.clientX - rect.left - wheelSize / 2;
+    const y = e.clientY - rect.top - wheelSize / 2;
+    const dist = Math.sqrt(x * x + y * y);
 
-    const centerX = wheelSize / 2;
-    const centerY = wheelSize / 2;
-    const dx = x - centerX;
-    const dy = y - centerY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    const sqX = centerX - squareSize / 2;
-    const sqY = centerY - squareSize / 2;
-
-    if (dist >= innerRadius - 4 && dist <= radius + 6) {
+    if (dist >= innerRadius - 4 && dist <= radius + 4) {
       isDraggingWheel.current = true;
-      try {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      } catch (_) {}
-      updateHueFromCoords(dx, dy);
-    } else if (x >= sqX - 4 && x <= sqX + squareSize + 4 && y >= sqY - 4 && y <= sqY + squareSize + 4) {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      updateHueFromCoords(x, y);
+    } else if (
+      Math.abs(x) <= squareSize / 2 + 4 &&
+      Math.abs(y) <= squareSize / 2 + 4
+    ) {
       isDraggingSquare.current = true;
-      try {
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      } catch (_) {}
-      updateSVFromCoords(x - sqX, y - sqY);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      updateSatValFromCoords(x, y);
     }
   };
 
@@ -701,45 +777,39 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     const canvas = wheelCanvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const centerX = wheelSize / 2;
-    const centerY = wheelSize / 2;
-    const sqX = centerX - squareSize / 2;
-    const sqY = centerY - squareSize / 2;
+    const x = e.clientX - rect.left - wheelSize / 2;
+    const y = e.clientY - rect.top - wheelSize / 2;
 
     if (isDraggingWheel.current) {
-      updateHueFromCoords(x - centerX, y - centerY);
+      updateHueFromCoords(x, y);
     } else if (isDraggingSquare.current) {
-      updateSVFromCoords(x - sqX, y - sqY);
+      updateSatValFromCoords(x, y);
     }
   };
 
   const handlePointerUpCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    try {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (_) {}
-    isDraggingWheel.current = false;
-    isDraggingSquare.current = false;
+    if (isDraggingWheel.current || isDraggingSquare.current) {
+      try {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      isDraggingWheel.current = false;
+      isDraggingSquare.current = false;
+    }
   };
 
-  const updateHueFromCoords = (dx: number, dy: number) => {
-    let angleRad = Math.atan2(dy, dx);
-    if (angleRad < 0) angleRad += Math.PI * 2;
-    const deg = Math.round((angleRad * 180) / Math.PI) % 360;
-
-    const nextHsv = { ...hsv, h: deg };
+  const updateHueFromCoords = (x: number, y: number) => {
+    let angle = (Math.atan2(y, x) * 180) / Math.PI;
+    if (angle < 0) angle += 360;
+    const nextHsv = { ...hsv, h: angle };
     setHsv(nextHsv);
     const rgb = hsvToRgb(nextHsv.h, nextHsv.s, nextHsv.v);
     const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
     onChangeColor(hex);
   };
 
-  const updateSVFromCoords = (relX: number, relY: number) => {
-    const s = Math.max(0, Math.min(1, relX / squareSize));
-    const v = Math.max(0, Math.min(1, 1 - relY / squareSize));
-
+  const updateSatValFromCoords = (x: number, y: number) => {
+    const s = Math.max(0, Math.min(1, (x + squareSize / 2) / squareSize));
+    const v = Math.max(0, Math.min(1, 1 - (y + squareSize / 2) / squareSize));
     const nextHsv = { ...hsv, s, v };
     setHsv(nextHsv);
     const rgb = hsvToRgb(nextHsv.h, nextHsv.s, nextHsv.v);
@@ -747,36 +817,28 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     onChangeColor(hex);
   };
 
-  // Handle OKLCh slider adjustments
-  const handleOklchChange = (key: 'L' | 'C' | 'h', val: number) => {
-    const nextOklch = { ...oklch, [key]: val };
-    setOklch(nextOklch);
-    const hex = oklchToHex(nextOklch);
+  // OKLCh Slider Handler
+  const handleOklchChange = (channel: 'L' | 'C' | 'h', val: number) => {
+    const next = { ...oklch, [channel]: val };
+    setOklch(next);
+    const hex = oklchToHex(next);
     onChangeColor(hex);
   };
 
-  // Compute OKLCh Harmonies
   const harmonies = useMemo(() => {
-    return generateHarmonies(currentColor);
+    const valid = normalizeHexColor(currentColor, '#38bdf8');
+    return generateHarmonies(valid);
   }, [currentColor]);
 
-  // Compute OKLCh vs sRGB Interpolated Gradients
   const oklchGradientSteps = useMemo(() => {
-    return generateOKLCHGradient(currentColor, secondaryColor, 9);
+    const valid1 = normalizeHexColor(currentColor, '#38bdf8');
+    const valid2 = normalizeHexColor(secondaryColor, '#f43f5e');
+    return generateOKLCHGradient(valid1, valid2, 9);
   }, [currentColor, secondaryColor]);
 
-  // Posterized preview
   const posterizedColor = useMemo(() => {
     return posterizeOKLCH(currentColor, posterizeSteps);
   }, [currentColor, posterizeSteps]);
-
-  const handleCopyHex = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(currentColor);
-      setCopiedHex(true);
-      setTimeout(() => setCopiedHex(false), 1500);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -786,101 +848,101 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
       onClick={onClose}
     >
       <div
-        className={`w-full max-w-xl rounded-2xl shadow-2xl border flex flex-col max-h-[92vh] overflow-hidden select-none animate-in zoom-in-95 duration-200 ${
-          theme === 'light'
-            ? 'bg-white border-neutral-200 text-neutral-800'
-            : 'bg-[#15171e] border-[#292c36] text-[#e2e4ea]'
-        }`}
+        id="mody-color-studio-modal"
         onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-xl max-h-[90vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden select-none animate-in zoom-in-95 duration-150 ${
+          theme === 'light'
+            ? 'bg-white border-neutral-200 text-neutral-900'
+            : 'bg-[#141519]/98 backdrop-blur-2xl border-[#2a2d38] text-neutral-100'
+        }`}
       >
-        {/* Header */}
+        {/* Modal Header */}
         <div
-          className={`flex items-center justify-between px-5 py-3.5 border-b ${
-            theme === 'light' ? 'border-neutral-200 bg-neutral-50/50' : 'border-[#252832] bg-[#12141a]'
+          className={`flex items-center justify-between px-4 py-3 border-b ${
+            theme === 'light' ? 'border-neutral-200 bg-neutral-50' : 'border-[#252832] bg-[#111216]'
           }`}
         >
           <div className="flex items-center gap-2.5">
             <div
-              className="w-5 h-5 rounded-full border border-black/20 shadow-inner"
+              className="w-5 h-5 rounded-md border border-white/30 shadow-inner"
               style={{ backgroundColor: currentColor }}
             />
             <div>
-              <div className="font-bold text-sm leading-none flex items-center gap-1.5">
-                <span>Color Studio (HSV & OKLCh)</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono">
-                  Polar Engine
-                </span>
-              </div>
-              <div className="text-[11px] text-neutral-400 font-mono mt-0.5">
-                {currentColor.toUpperCase()}
-              </div>
+              <h2 className="text-sm font-semibold tracking-wide">Color Studio (HSV & OKLCh)</h2>
+              <p className="text-[11px] text-neutral-400 font-mono">{currentColor.toUpperCase()}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleCopyHex}
-              className={`p-1.5 rounded-lg border transition-all ${
-                theme === 'light'
-                  ? 'border-neutral-200 hover:bg-neutral-100 text-neutral-600'
-                  : 'border-[#292c36] hover:bg-white/10 text-neutral-300'
-              }`}
-              title="Copy Hex Code"
-            >
-              {copiedHex ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-
             {onSampleFromScreen && (
               <button
-                onClick={() => {
-                  onClose();
-                  onSampleFromScreen();
-                }}
-                className={`p-1.5 rounded-lg border transition-all ${
+                onClick={onSampleFromScreen}
+                className={`p-1.5 rounded-lg border transition-colors ${
                   theme === 'light'
                     ? 'border-neutral-200 hover:bg-neutral-100 text-neutral-600'
-                    : 'border-[#292c36] hover:bg-white/10 text-neutral-300'
+                    : 'border-[#2c2f3a] hover:bg-white/10 text-neutral-400 hover:text-white'
                 }`}
-                title="Eyedropper DNA Sample"
+                title="Sample Color from Viewport"
               >
-                <Pipette className="w-4 h-4 text-sky-400" />
+                <Pipette className="w-4 h-4" />
               </button>
             )}
 
             <button
+              onClick={() => {
+                navigator.clipboard.writeText(currentColor);
+                setCopiedHex(true);
+                setTimeout(() => setCopiedHex(false), 1200);
+              }}
+              className={`p-1.5 rounded-lg border transition-colors ${
+                theme === 'light'
+                  ? 'border-neutral-200 hover:bg-neutral-100 text-neutral-600'
+                  : 'border-[#2c2f3a] hover:bg-white/10 text-neutral-400 hover:text-white'
+              }`}
+              title="Copy Hex"
+            >
+              {copiedHex ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+
+            <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-neutral-400 hover:text-white"
+              className={`p-1.5 rounded-lg border transition-colors ${
+                theme === 'light'
+                  ? 'border-neutral-200 hover:bg-neutral-100 text-neutral-600'
+                  : 'border-[#2c2f3a] hover:bg-white/10 text-neutral-400 hover:text-white'
+              }`}
+              title="Close"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Navigation Tabs - 1-Click Shaders as the first option */}
+        {/* Tab Navigation */}
         <div
-          className={`flex px-5 py-2 border-b gap-1.5 overflow-x-auto text-xs ${
-            theme === 'light' ? 'border-neutral-200 bg-neutral-50' : 'border-[#232630] bg-[#111318]'
+          className={`flex items-center px-4 py-2 border-b gap-1 overflow-x-auto scrollbar-none ${
+            theme === 'light' ? 'border-neutral-200 bg-neutral-100' : 'border-[#252832] bg-[#111216]'
           }`}
         >
           {[
-            { id: 'shaders' as TabType, label: '⚡ 1-Click Shaders', icon: Sparkles },
-            { id: 'wheel' as TabType, label: 'HSV Wheel', icon: Palette },
-            { id: 'oklch' as TabType, label: 'OKLCh Polar', icon: Zap },
-            { id: 'harmonies' as TabType, label: 'Harmonies', icon: Sparkles },
-            { id: 'gradients' as TabType, label: 'OKLCh Gradients', icon: Layers },
-            { id: 'presets' as TabType, label: 'Palettes', icon: SunMedium },
+            { id: 'shaders', label: '1-Click Shaders', icon: Sparkles },
+            { id: 'wheel', label: 'HSV Wheel', icon: Palette },
+            { id: 'oklch', label: 'OKLCh Polar', icon: Sliders },
+            { id: 'harmonies', label: 'Harmonies', icon: SunMedium },
+            { id: 'gradients', label: 'Gradients', icon: Zap },
+            { id: 'presets', label: 'Presets', icon: Layers },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium transition-all whitespace-nowrap ${
+                onClick={() => setActiveTab(tab.id as TabType)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                   isActive
                     ? 'bg-sky-500 text-white shadow-sm'
                     : theme === 'light'
-                    ? 'text-neutral-600 hover:bg-neutral-200/60'
+                    ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/60'
                     : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
               >
@@ -891,13 +953,16 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
           })}
         </div>
 
-        {/* Content Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto space-y-4">
-          {/* TAB 0: 1-Click Shaders & MatCaps (First Option) */}
+        {/* Tab Content Body */}
+        <div className="flex-1 p-4 overflow-y-auto min-h-0 space-y-4">
+          {/* TAB 0: 1-Click Shaders & MatCaps */}
           {activeTab === 'shaders' && (
             <MatCapShaderTabContent
               currentColor={currentColor}
               onChangeColor={onChangeColor}
+              onApplyBrushSettings={onApplyBrushSettings}
+              onApplyToModel={onApplyToModel}
+              onClose={onClose}
               theme={(theme === 'light' ? 'light' : 'dark')}
             />
           )}
@@ -1197,9 +1262,9 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
 
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold transition-colors shadow-sm"
+            className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold transition-colors shadow-sm cursor-pointer"
           >
-            Apply Color
+            {activeTab === 'shaders' ? 'Apply to Brush' : 'Apply Color'}
           </button>
         </div>
       </div>
