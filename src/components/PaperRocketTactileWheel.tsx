@@ -213,12 +213,12 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       target.closest('#three-trackball-canvas') ||
       target.closest('#paper-rocket-trackball-sphere') ||
       target.closest('#paper-rocket-joystick-core') ||
-      target.closest('#paper-rocket-radial-dial') ||
-      target.closest('#transform-navigator-header')
+      target.closest('#paper-rocket-radial-dial')
     ) {
       return;
     }
 
+    e.preventDefault();
     isDraggingCardRef.current = true;
     dragCardStartRef.current = {
       startX: e.clientX,
@@ -235,10 +235,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       if (!isDraggingCardRef.current) return;
       const dx = moveEvent.clientX - dragCardStartRef.current.startX;
       const dy = moveEvent.clientY - dragCardStartRef.current.startY;
-      const maxX = Math.max(10, window.innerWidth - 275);
-      const maxY = Math.max(10, window.innerHeight - 80);
-      const newX = Math.min(maxX, Math.max(10, dragCardStartRef.current.posX + dx));
-      const newY = Math.min(maxY, Math.max(10, dragCardStartRef.current.posY + dy));
+      const maxX = Math.max(0, window.innerWidth - 80);
+      const maxY = Math.max(0, window.innerHeight - 60);
+      const newX = Math.min(maxX, Math.max(0, dragCardStartRef.current.posX + dx));
+      const newY = Math.min(maxY, Math.max(0, dragCardStartRef.current.posY + dy));
       setPosition({ x: newX, y: newY });
     };
 

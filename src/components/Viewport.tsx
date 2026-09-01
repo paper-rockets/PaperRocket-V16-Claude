@@ -81,7 +81,7 @@ export const Viewport: React.FC<ViewportProps> = ({
   canRedo = false,
   cameraInteracting,
   setCameraInteracting,
-  fingerPenMode = false,
+  fingerPenMode = true,
   onToggleFingerPenMode,
   liquifySettings,
   onOpenColorPanel,
@@ -278,6 +278,7 @@ export const Viewport: React.FC<ViewportProps> = ({
       return;
     }
 
+    // Strict Input Bifurcation with Smart Surface Raycasting:
     // Multi-touch gestures (2+ fingers) always orbit/pan & cancel any pending stroke
     if (activePointers.current.size >= 2) {
       if (isPointerDown.current) {
@@ -288,16 +289,24 @@ export const Viewport: React.FC<ViewportProps> = ({
       return;
     }
 
-    // Check if touch should orbit: touch events strictly orbit unless fingerPenMode is explicitly turned on
-    const shouldTouchOrbit = isTouch && !fingerPenMode;
+    const coords = getNormalizedCoords(e);
 
-    const isCameraAction =
+    // Smart 1-finger touch vs model hit detection:
+    // If user touches 3D model with finger or pen, paint on model!
+    // If user drags outside the model in empty background and fingerPenMode is off, orbit camera!
+    let isCameraAction =
       e.button === 2 ||
       e.button === 1 ||
       e.altKey ||
       cameraInteracting ||
-      shouldTouchOrbit ||
       isPanMode;
+
+    if (!isCameraAction && isTouch && !fingerPenMode) {
+      const hit = engine.raycastModel(coords.x, coords.y, brushSettings);
+      if (!hit || !hit.hit) {
+        isCameraAction = true;
+      }
+    }
 
     if (isCameraAction) {
       setIsOrbiting(true);
@@ -307,7 +316,6 @@ export const Viewport: React.FC<ViewportProps> = ({
 
     // Brush DNA Picker tool (Clones complete 3D stroke DNA)
     if (tool === 'brush_picker') {
-      const coords = getNormalizedCoords(e);
       const dna = engine.sampleHolisticDNA(coords.x, coords.y, e.clientX, e.clientY);
       if (dna) {
         if (onUpdateBrushSettings) {
@@ -340,7 +348,6 @@ export const Viewport: React.FC<ViewportProps> = ({
 
     // Paint & Finish Eyedropper tool
     if (tool === 'paint_picker' || tool === 'eyedropper') {
-      const coords = getNormalizedCoords(e);
       const sampledColor = engine.sampleColorAtScreen(coords.x, coords.y, e.clientX, e.clientY);
       if (sampledColor) {
         if (onColorPick) {
@@ -369,7 +376,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     // Liquify Tool
     if (tool === 'liquify') {
       isPointerDown.current = true;
-      const coords = getNormalizedCoords(e);
       lastNormalizedPos.current = coords;
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
       engine.startLiquifySession();
@@ -379,7 +385,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     // Standard Painting action
     isPointerDown.current = true;
     strokeStartTime.current = performance.now();
-    const coords = getNormalizedCoords(e);
     lastNormalizedPos.current = coords;
     lastPointerPos.current = { x: e.clientX, y: e.clientY };
     const pressure = e.pressure > 0 ? e.pressure : 1.0;

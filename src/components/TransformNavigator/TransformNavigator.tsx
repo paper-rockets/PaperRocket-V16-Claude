@@ -262,6 +262,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
       return;
     }
 
+    e.preventDefault();
     isDraggingRef.current = true;
     dragStartRef.current = {
       startX: e.clientX,
@@ -278,10 +279,10 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
       if (!isDraggingRef.current) return;
       const dx = moveEvent.clientX - dragStartRef.current.startX;
       const dy = moveEvent.clientY - dragStartRef.current.startY;
-      const maxX = Math.max(10, window.innerWidth - 275);
-      const maxY = Math.max(10, window.innerHeight - 80);
-      const newX = Math.min(maxX, Math.max(10, dragStartRef.current.posX + dx));
-      const newY = Math.min(maxY, Math.max(10, dragStartRef.current.posY + dy));
+      const maxX = Math.max(0, window.innerWidth - 80);
+      const maxY = Math.max(0, window.innerHeight - 60);
+      const newX = Math.min(maxX, Math.max(0, dragStartRef.current.posX + dx));
+      const newY = Math.min(maxY, Math.max(0, dragStartRef.current.posY + dy));
       setPosition({ x: newX, y: newY });
     };
 

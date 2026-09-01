@@ -285,6 +285,43 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     return () => window.removeEventListener('pointerdown', handleCanvasPointerDown);
   }, [isPinned]);
 
+  // Close size/opacity popovers and menus when clicking outside or pressing Escape
+  useEffect(() => {
+    if (!showSizePopup && !showOpacityPopup && !showMoreMenu) return;
+
+    const handleClickOutsidePopovers = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        !target.closest('#toolbar-brush-size-popover') &&
+        !target.closest('#toolbar-brush-opacity-popover') &&
+        !target.closest('#toolbar-size-pill-trigger') &&
+        !target.closest('#toolbar-opacity-pill-trigger') &&
+        !target.closest('#toolbar-more-menu') &&
+        !target.closest('#toolbar-more-menu-trigger')
+      ) {
+        setShowSizePopup(false);
+        setShowOpacityPopup(false);
+        setShowMoreMenu(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSizePopup(false);
+        setShowOpacityPopup(false);
+        setShowMoreMenu(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handleClickOutsidePopovers);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handleClickOutsidePopovers);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showSizePopup, showOpacityPopup, showMoreMenu]);
+
   const clearCollapseTimer = () => {
     if (autoCollapseTimerRef.current) {
       clearTimeout(autoCollapseTimerRef.current);
@@ -1642,10 +1679,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* BRUSH SIZE POPOVER                                   */}
       {/* ---------------------------------------------------- */}
       {showSizePopup && (
-        <div className="absolute left-full ml-2 top-10 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none">
-          <div className="flex justify-between font-semibold">
-            <span>Brush Size</span>
-            <span className="font-mono text-neutral-400">{displayPxSize}</span>
+        <div
+          id="toolbar-brush-size-popover"
+          className="absolute left-full ml-2 top-10 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none"
+        >
+          <div className="flex justify-between items-center font-semibold pb-1 border-b border-[#282a32]">
+            <span className="text-xs text-white">Brush Size</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-neutral-400">{displayPxSize}</span>
+              <button
+                type="button"
+                onClick={() => setShowSizePopup(false)}
+                className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           <input
             type="range"
@@ -1680,10 +1730,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* BRUSH OPACITY POPOVER                                */}
       {/* ---------------------------------------------------- */}
       {showOpacityPopup && (
-        <div className="absolute left-full ml-2 top-24 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none">
-          <div className="flex justify-between font-semibold">
-            <span>Opacity</span>
-            <span className="font-mono text-neutral-400">{Math.round(brushSettings.opacity * 100)}%</span>
+        <div
+          id="toolbar-brush-opacity-popover"
+          className="absolute left-full ml-2 top-24 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none"
+        >
+          <div className="flex justify-between items-center font-semibold pb-1 border-b border-[#282a32]">
+            <span className="text-xs text-white">Opacity</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-neutral-400">{Math.round(brushSettings.opacity * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => setShowOpacityPopup(false)}
+                className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
           <input
             type="range"
