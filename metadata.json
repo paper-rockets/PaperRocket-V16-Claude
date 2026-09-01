@@ -1,0 +1,8 @@
+{
+  "name": "Remix 3D Model Painting Studio",
+  "description": "3D model painting studio and Draco compression suite with universal file conversion (GLB, GLTF, OBJ, FBX, 3DS, STL, PLY, DAE), orientation adjustment, geometry baking, and in-app local storage.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

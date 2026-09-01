@@ -1,0 +1,787 @@
+{
+  "pusheen_classic": {
+    "id": "pusheen_classic",
+    "name": "Pusheen Cat",
+    "file": "pusheen_classic.glb",
+    "category": "anime",
+    "scale": 4,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "pusheen_busy": {
+    "id": "pusheen_busy",
+    "name": "Pusheen Laptop",
+    "file": "pusheen_busy.glb",
+    "category": "anime",
+    "scale": 12,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 16,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "pusheen_vs_noodle": {
+    "id": "pusheen_vs_noodle",
+    "name": "Pusheen vs Ramen",
+    "file": "pusheen_vs_noodle.glb",
+    "category": "anime",
+    "scale": 4,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "pompompurin": {
+    "id": "pompompurin",
+    "name": "Pompompurin Dog",
+    "file": "pompompurin.glb",
+    "category": "anime",
+    "scale": 4,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "capybara_bath": {
+    "id": "capybara_bath",
+    "name": "Capybara Onsen Bath",
+    "file": "capybara_bath.glb",
+    "category": "shapes",
+    "scale": 3.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": 1.24,
+      "phi": 0.75,
+      "radius": 1,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "capybara_cute": {
+    "id": "capybara_cute",
+    "name": "Cute Capybara",
+    "file": "capybara_cute.glb",
+    "category": "shapes",
+    "scale": 1,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 1.26
+    },
+    "camera": {
+      "theta": 0.03,
+      "phi": 1.46,
+      "radius": 14.4,
+      "tx": -0.26,
+      "ty": -0.18,
+      "tz": -0.13
+    }
+  },
+  "chonky_axolotl": {
+    "id": "chonky_axolotl",
+    "name": "Chonky Axolotl",
+    "file": "chonky_axolotl.glb",
+    "category": "shapes",
+    "scale": 1.1,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 14.4,
+      "tx": -0.45,
+      "ty": -0.26,
+      "tz": -0.12
+    }
+  },
+  "fantasy_house": {
+    "id": "fantasy_house",
+    "name": "Fantasy Storybook House",
+    "file": "fantasy_house.glb",
+    "category": "houses",
+    "scale": 5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "isometric_castle": {
+    "id": "isometric_castle",
+    "name": "Fantasy Castle",
+    "file": "isometric_fantasy_castle.glb",
+    "category": "houses",
+    "scale": 6,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "korean_bakery": {
+    "id": "korean_bakery",
+    "name": "Korean Bakery Cafe",
+    "file": "korean_bakery.glb",
+    "category": "houses",
+    "scale": 5.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "medieval_house": {
+    "id": "medieval_house",
+    "name": "Medieval Timber House",
+    "file": "stylized_medieval_house.glb",
+    "category": "houses",
+    "scale": 5.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "car_house": {
+    "id": "car_house",
+    "name": "Camper Van House",
+    "file": "car_house.glb",
+    "category": "houses",
+    "scale": 5.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "modern_house": {
+    "id": "modern_house",
+    "name": "Modern Village Cottage",
+    "file": "house.glb",
+    "category": "houses",
+    "scale": 5.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "psx_saviola_s21": {
+    "id": "psx_saviola_s21",
+    "name": "PSX Seaplane",
+    "file": "psx_saviola_s21.glb",
+    "category": "cool",
+    "scale": 3,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 3
+    },
+    "camera": {
+      "theta": -0.34,
+      "phi": 1.12,
+      "radius": 25.6,
+      "tx": 0.15,
+      "ty": -0.14,
+      "tz": -0.13
+    }
+  },
+  "matilda_tank": {
+    "id": "matilda_tank",
+    "name": "Matilda Crawler Tank",
+    "file": "matilda.glb",
+    "category": "cool",
+    "scale": 4.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "akira_bike": {
+    "id": "akira_bike",
+    "name": "Akira Bike",
+    "file": "akira_bike.glb",
+    "category": "anime",
+    "scale": 33.8,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0.14,
+      "y": -0.64,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.12,
+      "phi": 1.22,
+      "radius": 28.8,
+      "tx": -0.91,
+      "ty": -0.59,
+      "tz": -0.36
+    }
+  },
+  "son_goku_and_kintoun_nimbus": {
+    "id": "son_goku_and_kintoun_nimbus",
+    "name": "Son Goku And Kintoun Nimbus",
+    "file": "son_goku_and_kintoun_nimbus.glb",
+    "category": "anime",
+    "scale": 16.7,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -2.49,
+      "phi": 1.3,
+      "radius": 21.5,
+      "tx": 1.01,
+      "ty": 0.53,
+      "tz": -1.42
+    }
+  },
+  "ash_ketchup_-_pokemon": {
+    "id": "ash_ketchup_-_pokemon",
+    "name": "Ash Ketchup Pokemon",
+    "file": "ash_ketchup_-_pokemon.glb",
+    "category": "anime",
+    "scale": 34.9,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 4.4
+    },
+    "camera": {
+      "theta": -1.12,
+      "phi": 1.22,
+      "radius": 45.7,
+      "tx": -2.41,
+      "ty": -2.43,
+      "tz": -3.12
+    }
+  },
+  "akira_motorcycle": {
+    "id": "akira_motorcycle",
+    "name": "Akira Motorcycle",
+    "file": "akira_motorcycle.glb",
+    "category": "anime",
+    "scale": 33.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -0.52,
+      "phi": 0.88,
+      "radius": 42.1,
+      "tx": -1.62,
+      "ty": -3.84,
+      "tz": -0.63
+    }
+  },
+  "boxy_lankybox (2)": {
+    "id": "boxy_lankybox (2)",
+    "name": "Boxy 1 (LankyBox)",
+    "file": "boxy_lankybox (2).glb",
+    "category": "anime",
+    "scale": 4,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "pos": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.29,
+      "phi": 0.64,
+      "radius": 12.6,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "boxy_lankybox_3_": {
+    "id": "boxy_lankybox_3_",
+    "name": "Boxy lankybox (3)",
+    "file": "boxy_lankybox (3).glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "bulbasaur___pokemon": {
+    "id": "bulbasaur___pokemon",
+    "name": "Bulbasaur pokemon",
+    "file": "bulbasaur_-_pokemon.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "cat_cuddly_toy_manga_anime_otaku_kawaii": {
+    "id": "cat_cuddly_toy_manga_anime_otaku_kawaii",
+    "name": "Cat cuddly toy manga anime otaku kawaii",
+    "file": "cat_cuddly_toy_manga_anime_otaku_kawaii.glb",
+    "category": "anime",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "charizardpokemon": {
+    "id": "charizardpokemon",
+    "name": "Charizardpokemon",
+    "file": "charizardpokemon.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "charmanderpokemon": {
+    "id": "charmanderpokemon",
+    "name": "Charmanderpokemon",
+    "file": "charmanderpokemon.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "foxy_lankybox_1_": {
+    "id": "foxy_lankybox_1_",
+    "name": "Foxy lankybox (1)",
+    "file": "foxy_lankybox (1).glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "foxy_lankybox": {
+    "id": "foxy_lankybox",
+    "name": "Foxy lankybox",
+    "file": "foxy_lankybox.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "halloween": {
+    "id": "halloween",
+    "name": "Halloween",
+    "file": "halloween.glb",
+    "category": "houses",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "kanedas_bike_akira": {
+    "id": "kanedas_bike_akira",
+    "name": "Kanedas bike akira",
+    "file": "kanedas_bike_akira.glb",
+    "category": "cool",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "krillin": {
+    "id": "krillin",
+    "name": "Krillin",
+    "file": "krillin.glb",
+    "category": "anime",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "lowpoly_pokemon_cherubi": {
+    "id": "lowpoly_pokemon_cherubi",
+    "name": "Lowpoly pokemon cherubi",
+    "file": "lowpoly_pokemon_cherubi.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "ninetalespokemon": {
+    "id": "ninetalespokemon",
+    "name": "Ninetalespokemon",
+    "file": "ninetalespokemon.glb",
+    "category": "characters",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "pawtisserie": {
+    "id": "pawtisserie",
+    "name": "Pawtisserie",
+    "file": "pawtisserie.glb",
+    "category": "houses",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "reg_riko_nanachi_from_made_in_abyss": {
+    "id": "reg_riko_nanachi_from_made_in_abyss",
+    "name": "Reg riko nanachi from made in abyss",
+    "file": "reg_riko_nanachi_from_made_in_abyss.glb",
+    "category": "anime",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "sailormoon_casual_bun": {
+    "id": "sailormoon_casual_bun",
+    "name": "Sailormoon casual bun",
+    "file": "sailormoon_casual_bun.glb",
+    "category": "anime",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "shinobu_oshino": {
+    "id": "shinobu_oshino",
+    "name": "Shinobu oshino",
+    "file": "shinobu_oshino.glb",
+    "category": "anime",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  },
+  "this_model_is_cute_and_kawaii": {
+    "id": "this_model_is_cute_and_kawaii",
+    "name": "This model is cute and kawaii",
+    "file": "this_model_is_cute_and_kawaii.glb",
+    "category": "shapes",
+    "scale": 2.5,
+    "rot": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "camera": {
+      "theta": -1.15,
+      "phi": 1.15,
+      "radius": 8,
+      "tx": 0,
+      "ty": 0,
+      "tz": 0
+    }
+  }
+}
