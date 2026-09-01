@@ -590,7 +590,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
   if (!isOpen) {
     return (
       <motion.button
-        id="feather-mini-trigger"
+        id="paper-rocket-mini-trigger"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         whileHover={{ scale: 1.15 }}
@@ -614,7 +614,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
   return (
     <div
       className="relative select-none flex flex-col items-center touch-none font-['Plus_Jakarta_Sans',sans-serif]"
-      id="feather-wheel-root"
+      id="paper-rocket-wheel-root"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -652,9 +652,9 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
         </button>
       </div>
 
-      {/* Main Feather-Inspired Tactile Circular Disc with Long-Press Detection */}
+      {/* Main Paper Rocket-Inspired Tactile Circular Disc with Long-Press Detection */}
       <motion.div
-        id="feather-circular-wheel"
+        id="paper-rocket-circular-wheel"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         onPointerDown={(e) => {
@@ -673,7 +673,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
       >
         {/* Inner Surface with Velocity-Based CSS Vibration */}
         <div
-          id="feather-wheel-surface"
+          id="paper-rocket-wheel-surface"
           style={{
             transform: `translate3d(${vibration.x}px, ${vibration.y}px, 0) rotate(${vibration.rot}deg)`,
           }}
@@ -753,7 +753,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
 
         {/* Bottom Arc (3 Dots for Popover Menu) */}
         <motion.button
-          id="feather-menu-pill"
+          id="paper-rocket-menu-pill"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onPointerDown={(e) => e.stopPropagation()}
@@ -778,7 +778,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
         {subMode === 'joystick' && (
           <div
             ref={joystickContainerRef}
-            id="feather-joystick-core"
+            id="paper-rocket-joystick-core"
             onPointerDown={(e) => handleJoystickDown(e, 'all')}
             onPointerMove={handleJoystickMove}
             onPointerUp={handleJoystickUp}
@@ -827,7 +827,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
 
             {/* Elastic White Center Puck */}
             <motion.div
-              id="feather-center-white-puck"
+              id="paper-rocket-center-white-puck"
               style={{
                 x: springX,
                 y: springY,
@@ -858,7 +858,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
         {/* MODE 2: ROLLING 3D TOY SPHERE */}
         {subMode === 'ball' && (
           <div
-            id="feather-trackball-sphere"
+            id="paper-rocket-trackball-sphere"
             className={`relative ${
               isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
             } rounded-full bg-[#121214] border-2 border-neutral-800 shadow-[inset_0_4px_16px_rgba(0,0,0,0.8)] flex items-center justify-center overflow-hidden z-20`}
@@ -890,7 +890,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
         {subMode === 'dial' && (
           <div
             ref={dialRef}
-            id="feather-radial-dial"
+            id="paper-rocket-radial-dial"
             onPointerDown={handleDialPointerDown}
             onPointerMove={(e) => {
               if (isDialDragging) handleDialPointer(e);
@@ -938,7 +938,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
       <AnimatePresence>
         {showMenu && (
           <motion.div
-            id="feather-settings-popover"
+            id="paper-rocket-settings-popover"
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -1074,7 +1074,7 @@ export const TactileSpatialController: React.FC<TactileSpatialControllerProps> =
       <AnimatePresence>
         {showHiddenPhysicsPanel && (
           <motion.div
-            id="feather-hidden-physics-panel"
+            id="paper-rocket-hidden-physics-panel"
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}

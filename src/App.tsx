@@ -31,7 +31,7 @@ import { SkyEnvironmentPanel } from './components/SkyEnvironmentPanel';
 import { ModelDisplayPanel } from './components/ModelDisplayPanel';
 import { SpatialNavGizmo } from './components/SpatialNavGizmo';
 import { TransformNavigator } from './components/TransformNavigator/TransformNavigator';
-import { FeatherTactileWheel } from './components/FeatherTactileWheel';
+import { PaperRocketTactileWheel } from './components/PaperRocketTactileWheel';
 import { TactileSpatialController } from './components/TactileSpatialController';
 import { ScreenCenterCrosshair } from './components/ScreenCenterCrosshair';
 import { IlluminationStudioModal } from './components/IlluminationStudioModal';
@@ -141,7 +141,7 @@ export default function App() {
         return saved as ActiveControllerType;
       }
     } catch (_) {}
-    return 'both';
+    return 'navigator';
   });
 
   const handleControllerChange = (ctrl: ActiveControllerType) => {
@@ -355,7 +355,7 @@ export default function App() {
   // Multi-Model & Target Scope State
   const [loadedModels, setLoadedModels] = useState<LoadedModelInfo[]>([]);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
-  const [targetScope, setTargetScope] = useState<TransformTargetScope>('active_layer');
+  const [targetScope, setTargetScope] = useState<TransformTargetScope>('all');
 
   useEffect(() => {
     const handleModelsChanged = (e: any) => {
@@ -466,11 +466,11 @@ export default function App() {
     (payload: TranslationEventPayload) => {
       if (!engine) return;
       if (payload.source.startsWith('2d-move-stick')) {
-        engine.translateScreenSpace(payload.deltaX * 0.05, payload.deltaY * 0.05, targetScope, isGizmoLocked);
+        engine.translateScreenSpace(payload.deltaX * 0.35, payload.deltaY * 0.35, targetScope, isGizmoLocked);
       } else if (payload.source.startsWith('3d-node')) {
-        if (payload.x !== 0) engine.translateAxis3D('x', payload.x * 0.15, targetScope);
-        if (payload.y !== 0) engine.translateAxis3D('y', payload.y * 0.15, targetScope);
-        if (payload.z !== 0) engine.translateAxis3D('z', payload.z * 0.15, targetScope);
+        if (payload.x !== 0) engine.translateAxis3D('x', payload.x * 0.35, targetScope);
+        if (payload.y !== 0) engine.translateAxis3D('y', payload.y * 0.35, targetScope);
+        if (payload.z !== 0) engine.translateAxis3D('z', payload.z * 0.35, targetScope);
       }
     },
     [engine, isGizmoLocked, targetScope]
@@ -859,7 +859,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 3D Navigation Controllers (Option 1: Transform Navigator Card, Option 2: Feather Tactile Spatial Circular Wheel) */}
+      {/* 3D Navigation Controllers (Option 1: Transform Navigator Card, Option 2: Paper Rocket Tactile Spatial Circular Wheel) */}
       {gizmoMode !== 'Hidden' && (activeController === 'navigator' || activeController === 'both') && (
         <TransformNavigator
           initialMode="2d"
@@ -894,7 +894,7 @@ export default function App() {
       )}
 
       {gizmoMode !== 'Hidden' && (activeController === 'tactile' || activeController === 'both') && (
-        <FeatherTactileWheel
+        <PaperRocketTactileWheel
           engine={engine}
           cameraSpherical={cameraSpherical}
           brushSettings={brushSettings}

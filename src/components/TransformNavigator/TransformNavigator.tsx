@@ -255,9 +255,9 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
       target.id?.startsWith('handle-') ||
       target.closest('[id^="handle-"]') ||
       target.closest('#three-trackball-canvas') ||
-      target.closest('#feather-trackball-sphere') ||
-      target.closest('#feather-joystick-core') ||
-      target.closest('#feather-radial-dial')
+      target.closest('#paper-rocket-trackball-sphere') ||
+      target.closest('#paper-rocket-joystick-core') ||
+      target.closest('#paper-rocket-radial-dial')
     ) {
       return;
     }

@@ -6,7 +6,7 @@ import { WBOITPipeline } from './wboitPipeline';
 /**
  * Post-Processing & Render Modifiers Engine
  *
- * Implements Feather-style render modes:
+ * Implements Paper Rocket-style render modes:
  * - Draft Mode: Direct zero-latency hardware rasterization
  * - Render Mode: Multi-effect compositing pass with:
  *   - Bloom / Neon Glow Halo (for self-illuminated glow materials)

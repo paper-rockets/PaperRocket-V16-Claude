@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { Sparkles, X, RotateCcw, Palette, Layers, Box, Check } from 'lucide-react';
 import { parseOBJ } from '../utils/objLoader';
+import { resolveAssetUrl } from '../utils/assetUrl';
 import { ALL_MATERIAL_PRESETS } from '../presets/materialPresets';
 import { SHADER_PRESETS } from '../presets/shaderPresets';
 import { StudioEngine } from '../core/studioEngine';
@@ -157,7 +158,7 @@ export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = (
         return;
       }
       try {
-        const res = await fetch('/assets/models/suzanne.obj');
+        const res = await fetch(resolveAssetUrl('assets/models/suzanne.obj'));
         const text = await res.text();
         const geo = parseOBJ(text);
         geo.scale(1.2, 1.2, 1.2);

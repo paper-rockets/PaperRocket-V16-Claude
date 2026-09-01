@@ -33,7 +33,7 @@ import { playHapticSound } from '../utils/audio';
 import { ThreeTrackball } from './ThreeTrackball';
 import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
 
-export interface FeatherTactileWheelProps {
+export interface PaperRocketTactileWheelProps {
   engine?: StudioEngine | null;
   cameraSpherical?: { radius: number; theta: number; phi: number };
   brushSettings?: BrushSettings;
@@ -66,7 +66,7 @@ export interface FeatherTactileWheelProps {
   clipboardCount?: number;
 }
 
-export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
+export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
   engine,
   brushSettings,
   onUpdateBrushSettings,
@@ -211,9 +211,9 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
       target.id?.startsWith('handle-') ||
       target.closest('[id^="handle-"]') ||
       target.closest('#three-trackball-canvas') ||
-      target.closest('#feather-trackball-sphere') ||
-      target.closest('#feather-joystick-core') ||
-      target.closest('#feather-radial-dial') ||
+      target.closest('#paper-rocket-trackball-sphere') ||
+      target.closest('#paper-rocket-joystick-core') ||
+      target.closest('#paper-rocket-radial-dial') ||
       target.closest('#transform-navigator-header')
     ) {
       return;
@@ -631,9 +631,9 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('z', -dirV * 0.008, targetScope);
+          engine.translateAxis3D('z', -dirV * 0.06, targetScope);
         } else {
-          engine.translateScreenSpace(0, -dirV * 2.0, targetScope, isLocked);
+          engine.translateScreenSpace(0, -dirV * 30.0, targetScope, isLocked);
         }
       }
     } else if (activeAxis === 'x') {
@@ -643,9 +643,9 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('x', dirU * 0.008, targetScope);
+          engine.translateAxis3D('x', dirU * 0.06, targetScope);
         } else {
-          engine.translateScreenSpace(dirU * 2.0, 0, targetScope, isLocked);
+          engine.translateScreenSpace(dirU * 30.0, 0, targetScope, isLocked);
         }
       }
     } else if (activeAxis === 'y') {
@@ -655,9 +655,9 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('y', -dirV * 0.008, targetScope);
+          engine.translateAxis3D('y', -dirV * 0.06, targetScope);
         } else {
-          engine.translateScreenSpace(0, dirV * 2.0, targetScope, isLocked);
+          engine.translateScreenSpace(0, dirV * 30.0, targetScope, isLocked);
         }
       }
     } else {
@@ -666,7 +666,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
       setDragValueLabel(`${disp}mm`);
 
       if (engine) {
-        engine.translateScreenSpace(dirU * 2.0, dirV * 2.0, targetScope, isLocked);
+        engine.translateScreenSpace(dirU * 30.0, dirV * 30.0, targetScope, isLocked);
       }
     }
   };
@@ -717,7 +717,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         );
 
         if (engine) {
-          engine.translateScreenSpace(vx * 0.8, -vy * 0.8, targetScope, isLocked);
+          engine.translateScreenSpace(vx * 15.0, -vy * 15.0, targetScope, isLocked);
         }
 
         joystickFrictionRef.current = requestAnimationFrame(stepJoystickFriction);
@@ -903,7 +903,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
   if (!isOpen) {
     return (
       <motion.button
-        id="feather-mini-trigger"
+        id="paper-rocket-mini-trigger"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         whileHover={{ scale: 1.08 }}
@@ -932,7 +932,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
   return (
     <aside
-      id="feather-wheel-root"
+      id="paper-rocket-wheel-root"
       role="region"
       aria-label="Tactile Spatial Controller Widget"
       onPointerDown={handleCardDragStart}
@@ -977,10 +977,10 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         clipboardCount={clipboardCount}
       />
 
-      {/* Main Feather-Inspired Tactile Circular Disc Body */}
-      <div id="feather-wheel-body" className="overflow-hidden flex flex-col relative px-2 py-2 items-center justify-center">
+      {/* Main Paper Rocket-Inspired Tactile Circular Disc Body */}
+      <div id="paper-rocket-wheel-body" className="overflow-hidden flex flex-col relative px-2 py-2 items-center justify-center">
         <motion.div
-          id="feather-circular-wheel"
+          id="paper-rocket-circular-wheel"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           onPointerDown={(e) => {
@@ -999,7 +999,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         >
         {/* Inner Surface with Velocity-Based CSS Vibration (Preventing outer button displacement glitches) */}
         <div
-          id="feather-wheel-surface"
+          id="paper-rocket-wheel-surface"
           style={{
             transform: `translate3d(${vibration.x}px, ${vibration.y}px, 0) rotate(${vibration.rot}deg)`,
           }}
@@ -1086,7 +1086,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         {subMode === 'joystick' && (
           <div
             ref={joystickContainerRef}
-            id="feather-joystick-core"
+            id="paper-rocket-joystick-core"
             onPointerDown={(e) => handleJoystickDown(e, 'all')}
             onPointerMove={handleJoystickMove}
             onPointerUp={handleJoystickUp}
@@ -1136,7 +1136,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
             {/* Elastic White Center Puck with 3D Dome Shading */}
             <motion.div
-              id="feather-center-white-puck"
+              id="paper-rocket-center-white-puck"
               style={{
                 x: springX,
                 y: springY,
@@ -1168,7 +1168,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         {/* MODE 2: ROLLING 3D TOY SPHERE (Real Three.js WebGPU/WebGL 3D Sphere Trackball) */}
         {subMode === 'ball' && (
           <div
-            id="feather-trackball-sphere"
+            id="paper-rocket-trackball-sphere"
             className={`relative ${
               isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
             } rounded-full bg-[#121214] border-2 border-neutral-800 shadow-[inset_0_4px_16px_rgba(0,0,0,0.8)] flex items-center justify-center overflow-hidden z-20`}
@@ -1205,7 +1205,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         {subMode === 'dial' && (
           <div
             ref={dialRef}
-            id="feather-radial-dial"
+            id="paper-rocket-radial-dial"
             onPointerDown={handleDialPointerDown}
             onPointerMove={(e) => {
               if (isDialDragging) handleDialPointer(e);
@@ -1267,7 +1267,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
         {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) */}
         <button
-          id="feather-settings-btn"
+          id="paper-rocket-settings-btn"
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -1288,7 +1288,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
         {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
         <button
-          id="feather-minimize-btn"
+          id="paper-rocket-minimize-btn"
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -1305,11 +1305,11 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
         </button>
       </div>
 
-      {/* Feather Quick Settings Popover anchored at Bottom */}
+      {/* Paper Rocket Quick Settings Popover anchored at Bottom */}
       <AnimatePresence>
         {showMenu && (
           <motion.div
-            id="feather-settings-popover"
+            id="paper-rocket-settings-popover"
             initial={{ opacity: 0, scale: 0.92, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
@@ -1461,7 +1461,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
       <AnimatePresence>
         {showHiddenPhysicsPanel && (
           <motion.div
-            id="feather-hidden-physics-panel"
+            id="paper-rocket-hidden-physics-panel"
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -1663,7 +1663,7 @@ export const FeatherTactileWheel: React.FC<FeatherTactileWheelProps> = ({
 
       {/* Corner Drag-to-Resize Handle ("Resizing Thingy") */}
       <div
-        id="feather-wheel-resize-handle"
+        id="paper-rocket-wheel-resize-handle"
         onPointerDown={handleResizeStart}
         onDoubleClick={handleScaleCycle}
         className="absolute bottom-0 right-0 z-40 w-6 h-6 flex items-end justify-end p-1 cursor-nwse-resize group transition-transform active:scale-125 select-none"

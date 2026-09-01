@@ -3,7 +3,7 @@ import { PatternType } from '../types';
 
 /**
  * Procedural Pattern Texture Generator
- * Generates seamless procedural textures for Feather-style stroke patterns:
+ * Generates seamless procedural textures for Paper Rocket-style stroke patterns:
  * - Dot: Ordered halftone dots
  * - Line: Parallel hatching
  * - Cross: Orthogonal crosshatch grid

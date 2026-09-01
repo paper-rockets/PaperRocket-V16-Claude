@@ -15,6 +15,7 @@ import {
 } from '../core/colorMath';
 import { normalizeHexColor } from '../core/materialCache';
 import { parseOBJ } from '../utils/objLoader';
+import { resolveAssetUrl } from '../utils/assetUrl';
 import { ALL_MATERIAL_PRESETS } from '../presets/materialPresets';
 import { SHADER_PRESETS } from '../presets/shaderPresets';
 import {
@@ -214,7 +215,7 @@ function MatCapShaderTabContent({
         return;
       }
       try {
-        const res = await fetch('/assets/models/suzanne.obj');
+        const res = await fetch(resolveAssetUrl('assets/models/suzanne.obj'));
         const text = await res.text();
         const geo = parseOBJ(text);
         geo.scale(1.2, 1.2, 1.2);

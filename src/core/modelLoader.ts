@@ -13,6 +13,7 @@ import { TDSLoader } from 'three/examples/jsm/loaders/TDSLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { modelNormalization } from './modelNormalization';
 import { MaterialCache } from './materialCache';
+import { resolveAssetUrl } from '../utils/assetUrl';
 
 export type LoadingTier = 'tier1_full' | 'tier2_safe_geom' | 'tier3_raw_recovery' | 'tier4_point_cloud';
 
@@ -235,11 +236,12 @@ export class ModelLoaderService {
    * Loads model from direct URL or buffer
    */
   public async loadFromUrl(url: string, name: string): Promise<LoadResult> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP error ${res.status} fetching 3D model from ${url}`);
+    const resolvedUrl = resolveAssetUrl(url);
+    const res = await fetch(resolvedUrl);
+    if (!res.ok) throw new Error(`HTTP error ${res.status} fetching 3D model from ${resolvedUrl}`);
     const blob = await res.blob();
     if (blob.size === 0) {
-      throw new Error(`Empty model file (0 bytes) received from ${url}`);
+      throw new Error(`Empty model file (0 bytes) received from ${resolvedUrl}`);
     }
     const file = new File([blob], name, { type: blob.type || 'model/gltf-binary' });
     return this.loadFromFiles([file]);

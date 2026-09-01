@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveAssetUrl } from '../utils/assetUrl';
 
 export interface PresetModelDefinition {
   id: string;
@@ -15,7 +16,7 @@ export interface PresetModelDefinition {
 
 export class SampleModelFactory {
   public static getPresets(): PresetModelDefinition[] {
-    return [
+    const rawPresets: PresetModelDefinition[] = [
       // SHAPES & BENCHMARKS / CANVAS
       {
         id: 'drawing_plane',
@@ -380,6 +381,11 @@ export class SampleModelFactory {
         createMesh: () => SampleModelFactory.createTorusKnot(),
       },
     ];
+
+    return rawPresets.map((p) => ({
+      ...p,
+      file: p.file ? resolveAssetUrl(p.file) : undefined,
+    }));
   }
 
   public static createCyberHelmet(): THREE.Object3D {

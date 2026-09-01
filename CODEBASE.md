@@ -111,7 +111,7 @@ v14/
     │   ├── SpatialNavGizmo.tsx           # 3D spatial transformation gizmo
     │   ├── SingleHandDualNav.tsx         # Dual-thumb floating navigation pads for tablets
     │   ├── TactileSpatialController.tsx  # Multi-modal spatial control pad (Joystick, Trackball, Dials)
-    │   ├── FeatherTactileWheel.tsx       # Rotary wheel with tactile resistance simulation
+    │   ├── PaperRocketTactileWheel.tsx   # Rotary wheel with tactile resistance simulation
     │   ├── ThreeTrackball.tsx            # Free-axis 3D virtual trackball controller
     │   ├── TransformJoystick.tsx         # Dual-axis floating navigation joystick
     │   ├── SkyEnvironmentPanel.tsx       # Atmosphere, sun, cloud, and fog environment panel
@@ -210,7 +210,7 @@ v14/
 | :--- | :--- |
 | `TransformNavigator/` | Modular, dockable transform navigation suite supporting 2D planar, 3D gimbal, and Tactile rotary dial control modes with clipboard copy/paste and telemetry logging. |
 | `TactileNavigatorDial.tsx` | High-precision rotary dial with synthesized procedural Web Audio clicks and haptic pulses. |
-| `FeatherTactileWheel.tsx` | Rotary control wheel simulating physical resistance and inertia for micro-adjustments. |
+| `PaperRocketTactileWheel.tsx` | Rotary control wheel simulating physical resistance and inertia for micro-adjustments. |
 | `ThreeTrackball.tsx` | Virtual 3D trackball controller for free-axis rotational manipulation. |
 | `SingleHandDualNav.tsx` | Dual-thumb floating navigation pads optimized for one-handed tablet interaction. |
 | `TransformJoystick.tsx` | Dual-axis floating navigation joystick for continuous translation and rotation. |

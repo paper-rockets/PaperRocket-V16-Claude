@@ -56,6 +56,7 @@ import { webgpuPipeline } from './webgpuPipeline';
 import { ensureGeometryLinearVertexColors, oklabMix } from './colorMath';
 import { modelExporter } from './modelExporter';
 import { modelNormalization } from './modelNormalization';
+import { resolveAssetUrl } from '../utils/assetUrl';
 
 // Patch Three.js geometry and mesh prototypes with BVH accelerated raycasting
 try {
@@ -449,12 +450,13 @@ export class StudioEngine {
     this.clearModel(presetId === 'drawing_plane');
     if (found.file || found.remoteUrl) {
       try {
-        const fileUrl = found.file || found.remoteUrl!;
-        if (fileUrl.startsWith('/models/')) {
+        const rawUrl = found.file || found.remoteUrl!;
+        const fileUrl = resolveAssetUrl(rawUrl);
+        if (fileUrl.includes('models/')) {
           const checkRes = await fetch(fileUrl, { method: 'HEAD' }).catch(() => null);
           const contentLength = checkRes ? parseInt(checkRes.headers.get('content-length') || '-1', 10) : -1;
-          if (contentLength === 0) {
-            throw new Error(`File ${fileUrl} is empty (0 bytes).`);
+          if (contentLength === 0 || (checkRes && !checkRes.ok)) {
+            throw new Error(`File ${fileUrl} is unavailable (HTTP ${checkRes?.status || 'error'}).`);
           }
         }
         await this.loadGLTF(fileUrl, found.name, found);
@@ -748,7 +750,7 @@ export class StudioEngine {
     try {
       let loadRes: LoadResult;
       if (typeof bufferOrUrl === 'string') {
-        let url = bufferOrUrl;
+        let url = resolveAssetUrl(bufferOrUrl);
         if (url.includes('github.com') && url.includes('/blob/')) {
           url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
         }
@@ -2646,8 +2648,8 @@ export class StudioEngine {
           mesh.geometry.computeBoundingBox();
         }
       });
-      this.strokeRoot.applyMatrix4(matrix);
-      this.strokeRoot.updateMatrixWorld(true);
+      // strokeRoot is already a child of modelRoot, so child meshes transform together.
+      // Update descriptor points for geometry export / raycasting synchronization
       this.strokes.forEach(({ descriptor }) => {
         descriptor.points.forEach((p) => {
           p.position.applyMatrix4(matrix);
@@ -2664,8 +2666,10 @@ export class StudioEngine {
         });
       });
     } else if (scope === 'active_layer') {
+      let transformedAny = false;
       this.strokes.forEach(({ descriptor, meshes }) => {
         if (descriptor.layerId === this.activeLayerId) {
+          transformedAny = true;
           meshes.forEach((mesh) => {
             mesh.applyMatrix4(matrix);
             mesh.updateMatrixWorld(true);
@@ -2676,6 +2680,17 @@ export class StudioEngine {
           });
         }
       });
+      // Fallback: If no strokes exist in the active layer, transform modelRoot so navigator remains fully functional
+      if (!transformedAny) {
+        this.modelRoot.applyMatrix4(matrix);
+        this.modelRoot.updateMatrixWorld(true);
+        this.targetMeshes.forEach((mesh) => {
+          if (mesh.geometry) {
+            mesh.geometry.computeBoundingSphere();
+            mesh.geometry.computeBoundingBox();
+          }
+        });
+      }
     }
   }
 
