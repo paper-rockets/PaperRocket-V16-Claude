@@ -626,8 +626,12 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     const newHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
     setHsv(newHsv);
 
-    const newOklch = hexToOklch(validHex);
-    setOklch(newOklch);
+    const rawOklch = hexToOklch(validHex);
+    setOklch({
+      L: rawOklch.L,
+      C: rawOklch.C,
+      h: Math.round((rawOklch.h * 180) / Math.PI),
+    });
   }, [currentColor]);
 
   // Dimension helpers for the HSV wheel
@@ -805,6 +809,7 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     const rgb = hsvToRgb(nextHsv.h, nextHsv.s, nextHsv.v);
     const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
     onChangeColor(hex);
+    onApplyBrushSettings?.({ color: hex });
   };
 
   const updateSatValFromCoords = (x: number, y: number) => {
@@ -815,14 +820,20 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
     const rgb = hsvToRgb(nextHsv.h, nextHsv.s, nextHsv.v);
     const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
     onChangeColor(hex);
+    onApplyBrushSettings?.({ color: hex });
   };
 
   // OKLCh Slider Handler
   const handleOklchChange = (channel: 'L' | 'C' | 'h', val: number) => {
     const next = { ...oklch, [channel]: val };
     setOklch(next);
-    const hex = oklchToHex(next);
+    const hex = oklchToHex({
+      L: next.L,
+      C: next.C,
+      h: (next.h * Math.PI) / 180,
+    });
     onChangeColor(hex);
+    onApplyBrushSettings?.({ color: hex });
   };
 
   const harmonies = useMemo(() => {
@@ -1132,7 +1143,10 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
                     <div
                       className="h-10 rounded-lg border border-white/10 shadow-inner cursor-pointer hover:ring-2 hover:ring-emerald-400 transition-all"
                       style={{ backgroundColor: posterizedColor }}
-                      onClick={() => onChangeColor(posterizedColor)}
+                      onClick={() => {
+                        onChangeColor(posterizedColor);
+                        onApplyBrushSettings?.({ color: posterizedColor });
+                      }}
                       title="Click to apply posterized color"
                     />
                     <span className="text-[10px] text-emerald-400 font-mono mt-1 block">
@@ -1160,7 +1174,10 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
                       {colorList.map((c, idx) => (
                         <button
                           key={idx}
-                          onClick={() => onChangeColor(c)}
+                          onClick={() => {
+                            onChangeColor(c);
+                            onApplyBrushSettings?.({ color: c });
+                          }}
                           className={`h-10 rounded-lg border transition-all active:scale-95 hover:scale-105 ${
                             c.toLowerCase() === currentColor.toLowerCase()
                               ? 'ring-2 ring-sky-400 border-white'
@@ -1197,8 +1214,11 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
                     {oklchGradientSteps.map((c, idx) => (
                       <button
                         key={idx}
-                        onClick={() => onChangeColor(c)}
-                        className="rounded-md border border-white/10 hover:scale-105 transition-transform"
+                        onClick={() => {
+                          onChangeColor(c);
+                          onApplyBrushSettings?.({ color: c });
+                        }}
+                        className="rounded-md border border-white/10 hover:scale-105 transition-transform cursor-pointer"
                         style={{ backgroundColor: c }}
                         title={c}
                       />
@@ -1219,8 +1239,11 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
                     {colors.map((c) => (
                       <button
                         key={c}
-                        onClick={() => onChangeColor(c)}
-                        className={`h-8 rounded-lg border transition-all active:scale-95 hover:scale-105 ${
+                        onClick={() => {
+                          onChangeColor(c);
+                          onApplyBrushSettings?.({ color: c });
+                        }}
+                        className={`h-8 rounded-lg border transition-all active:scale-95 hover:scale-105 cursor-pointer ${
                           c.toLowerCase() === currentColor.toLowerCase()
                             ? 'ring-2 ring-sky-400 border-white'
                             : 'border-white/10'
@@ -1250,6 +1273,7 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
               onChange={(e) => {
                 if (e.target.value.startsWith('#')) {
                   onChangeColor(e.target.value);
+                  onApplyBrushSettings?.({ color: e.target.value });
                 }
               }}
               className={`w-24 px-2 py-1 rounded-lg font-mono text-center border ${
@@ -1261,7 +1285,11 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              onChangeColor(currentColor);
+              onApplyBrushSettings?.({ color: currentColor });
+              onClose();
+            }}
             className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold transition-colors shadow-sm cursor-pointer"
           >
             {activeTab === 'shaders' ? 'Apply to Brush' : 'Apply Color'}

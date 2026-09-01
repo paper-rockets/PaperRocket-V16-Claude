@@ -190,8 +190,13 @@ export function hexToOKLab(hex: string): OKLabColor {
 export function oklabToHex(L: number, a: number, b: number): string {
   const linear = oklabToLinearRGB(L, a, b);
   const srgb = linearRGBToSRGB(linear.r, linear.g, linear.b);
-  const c = new THREE.Color(srgb.r, srgb.g, srgb.b);
-  return '#' + c.getHexString();
+  const r = Math.max(0, Math.min(255, Math.round((Number.isFinite(srgb.r) ? srgb.r : 0) * 255)));
+  const g = Math.max(0, Math.min(255, Math.round((Number.isFinite(srgb.g) ? srgb.g : 0) * 255)));
+  const b_ = Math.max(0, Math.min(255, Math.round((Number.isFinite(srgb.b) ? srgb.b : 0) * 255)));
+  const hexR = r.toString(16).padStart(2, '0');
+  const hexG = g.toString(16).padStart(2, '0');
+  const hexB = b_.toString(16).padStart(2, '0');
+  return '#' + hexR + hexG + hexB;
 }
 
 /**
@@ -208,10 +213,11 @@ export function oklabToOKLCH(lab: OKLabColor): OKLCHColor {
  * Converts cylindrical OKLCH back to Cartesian OKLab
  */
 export function oklchToOKLab(lch: OKLCHColor): OKLabColor {
+  const hRad = lch.h > Math.PI * 2 ? (lch.h * Math.PI) / 180 : lch.h;
   return {
-    L: lch.L,
-    a: lch.C * Math.cos(lch.h),
-    b: lch.C * Math.sin(lch.h),
+    L: Math.max(0, Math.min(1, lch.L)),
+    a: lch.C * Math.cos(hRad),
+    b: lch.C * Math.sin(hRad),
   };
 }
 
@@ -228,7 +234,7 @@ export function hexToOKLCH(hex: string): OKLCHColor {
 }
 
 /**
- * Converts cylindrical OKLCH (Lightness 0..1, Chroma 0..0.4, Hue in radians 0..2*PI) to Hex string (#rrggbb)
+ * Converts cylindrical OKLCH (Lightness 0..1, Chroma 0..0.4, Hue in radians or degrees) to Hex string (#rrggbb)
  */
 export function oklchToHex(lch: OKLCHColor): string {
   const lab = oklchToOKLab(lch);

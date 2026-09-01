@@ -349,7 +349,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   };
 
   const handleSelectColor = (hex: string) => {
-    const valid = normalizeHexColor(hex, '#000000');
+    const valid = normalizeHexColor(hex, brushSettings.color || '#38bdf8');
     setBrushSettings((prev) => ({ ...prev, color: valid }));
     setCustomHex(valid);
   };
@@ -1669,6 +1669,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         onClose={() => setShowColorModal(false)}
         currentColor={brushSettings.color || '#38bdf8'}
         onChangeColor={(hex) => handleSelectColor(hex)}
+        onApplyBrushSettings={(newSettings) =>
+          setBrushSettings((prev) => ({ ...prev, ...newSettings }))
+        }
+        onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
         onSampleFromScreen={() => {
           setTool('paint_picker');
         }}
