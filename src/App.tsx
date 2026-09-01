@@ -16,6 +16,7 @@ import {
   GizmoMode,
   Guide3D,
   ActiveControllerType,
+  ProjectSaveData,
 } from './types';
 import { StudioEngine } from './core/studioEngine';
 import { Viewport } from './components/Viewport';
@@ -538,6 +539,54 @@ export default function App() {
     engine?.setTheme(nextTheme);
   };
 
+  // Full Project State Save (.remix3d JSON file)
+  const handleSaveProject = useCallback(() => {
+    if (!engine) return;
+    const projectData = engine.exportProjectData('Remix 3D Project', layers);
+    const jsonStr = JSON.stringify(projectData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(projectData.name || 'Remix3D_Project').replace(/\s+/g, '_')}_${Date.now()}.remix3d`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    haptics.trigger('success');
+  }, [engine, layers]);
+
+  // Full Project State Load (.remix3d JSON file)
+  const handleLoadProject = useCallback((file: File) => {
+    if (!engine) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const projectData: ProjectSaveData = JSON.parse(content);
+        engine.importProjectData(projectData);
+        if (projectData.layers && projectData.layers.length > 0) {
+          setLayers(projectData.layers);
+          setActiveLayerId(projectData.layers[0].id);
+        }
+        if (projectData.lightingPreset) {
+          setLightingPreset(projectData.lightingPreset);
+        }
+        if (projectData.showGrid !== undefined) {
+          setShowGrid(projectData.showGrid);
+        }
+        if (projectData.showWireframe !== undefined) {
+          setShowWireframe(projectData.showWireframe);
+        }
+        haptics.trigger('success');
+      } catch (err) {
+        console.error('Failed to parse .remix3d project file:', err);
+        alert('Invalid or corrupted .remix3d project file.');
+      }
+    };
+    reader.readAsText(file);
+  }, [engine]);
+
   // Sync grid toggle
   const handleToggleGrid = () => {
     const next = !showGrid;
@@ -813,6 +862,9 @@ export default function App() {
         onOpenMobileConnect={() => setIsMobileConnectOpen(true)}
         onOpenBrushSettings={() => setIsSettingsOpen((prev) => !prev)}
         onOpenColorStudio={() => setIsColorStudioOpen(true)}
+        onSaveProject={handleSaveProject}
+        onLoadProject={handleLoadProject}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* Frame-Per-Second Counter: Bottom-Left with responsive mobile adjustment (Requirement 5) */}
@@ -971,6 +1023,7 @@ export default function App() {
           onRecalculateNormals={() => engine?.recalculateMeshNormals()}
           onOpenRaycastSettings={() => setIsRaycastSettingsOpen(true)}
           onOpenColorStudio={() => setIsColorStudioOpen(true)}
+          theme={theme}
         />
       )}
 

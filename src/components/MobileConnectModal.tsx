@@ -10,10 +10,15 @@ import {
   ShieldCheck,
   ShieldAlert,
   Maximize,
+  Minimize,
+  Download,
   X,
   Layers,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react';
+import { isFullscreen, toggleFullscreen, subscribeFullscreenChange, isStandalonePWA } from '../utils/fullscreen';
+import { canInstallPWA, promptPWAInstall, subscribeInstallAvailability } from '../registerServiceWorker';
 
 interface MobileConnectModalProps {
   isOpen: boolean;
@@ -26,6 +31,9 @@ export const MobileConnectModal: React.FC<MobileConnectModalProps> = ({ isOpen, 
   const [currentUrl, setCurrentUrl] = useState('');
   const [customIp, setCustomIp] = useState('');
   const [isSecure, setIsSecure] = useState(false);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [installAvailable, setInstallAvailable] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const [touchInfo, setTouchInfo] = useState<{
     hasTouch: boolean;
     maxTouchPoints: number;
@@ -39,6 +47,24 @@ export const MobileConnectModal: React.FC<MobileConnectModalProps> = ({ isOpen, 
     width: 0,
     height: 0,
   });
+
+  useEffect(() => {
+    setFullscreenActive(isFullscreen());
+    setIsStandalone(isStandalonePWA());
+
+    const unsubFs = subscribeFullscreenChange((active) => {
+      setFullscreenActive(active);
+    });
+
+    const unsubPwa = subscribeInstallAvailability((available) => {
+      setInstallAvailable(available);
+    });
+
+    return () => {
+      unsubFs();
+      unsubPwa();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -94,11 +120,16 @@ export const MobileConnectModal: React.FC<MobileConnectModalProps> = ({ isOpen, 
     }
   };
 
-  const handleFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    } else {
-      document.documentElement.requestFullscreen().catch(() => {});
+  const handleFullscreenToggle = async () => {
+    const active = await toggleFullscreen();
+    setFullscreenActive(active);
+  };
+
+  const handleInstallPWA = async () => {
+    const res = await promptPWAInstall();
+    if (res === 'accepted') {
+      setInstallAvailable(false);
+      setIsStandalone(true);
     }
   };
 
@@ -228,17 +259,50 @@ export const MobileConnectModal: React.FC<MobileConnectModalProps> = ({ isOpen, 
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <button
-              onClick={handleFullscreen}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
-            >
-              <Maximize className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Toggle Fullscreen</span>
-            </button>
+          {/* PWA App Installation & Fullscreen Quick Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-800/80">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleFullscreenToggle}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+                title="Toggle Fullscreen"
+              >
+                {fullscreenActive ? (
+                  <>
+                    <Minimize className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Exit Fullscreen</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Go Fullscreen</span>
+                  </>
+                )}
+              </button>
+
+              {installAvailable && !isStandalone && (
+                <button
+                  type="button"
+                  onClick={handleInstallPWA}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/25 transition-all"
+                  title="Install Progressive Web App on this device"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Install PWA App</span>
+                </button>
+              )}
+
+              {isStandalone && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+                  <Sparkles className="w-3 h-3" />
+                  <span>PWA Installed</span>
+                </span>
+              )}
+            </div>
 
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
             >

@@ -4,7 +4,7 @@ import { SkyPresetName, SkySettings } from './core/proceduralSky';
 
 export type { SkyPresetName, SkySettings };
 
-export type ToolType = 'brush' | 'uv_brush' | 'eraser' | 'eyedropper' | 'brush_picker' | 'paint_picker' | 'free_brush' | 'spatial_brush' | 'liquify';
+export type ToolType = 'brush' | 'uv_brush' | 'eraser' | 'eyedropper' | 'brush_picker' | 'paint_picker' | 'free_brush' | 'spatial_brush' | 'liquify' | 'pointer' | 'select';
 
 export interface BrushPreset {
   id: string;
@@ -599,7 +599,7 @@ export interface TelemetryLogEntry {
 
 export type ActiveControllerType = 'navigator' | 'tactile' | 'both' | 'hidden';
 
-export type SpatialMode = '2d' | '3d';
+export type SpatialMode = '2d' | '3d' | 'tactile_ball';
 
 export type SubWheelMode = 'joystick' | 'ball' | 'dial';
 
@@ -612,6 +612,26 @@ export interface SpatialState {
   roll: number;
   scale: number;
   brushSize: number;
+}
+
+export interface ProjectSaveData {
+  version: string;
+  name: string;
+  timestamp: number;
+  camera: {
+    position: [number, number, number];
+    target: [number, number, number];
+    fov: number;
+    spherical?: { radius: number; theta: number; phi: number };
+  };
+  layers: Layer[];
+  strokes: StrokeDescriptor[];
+  activeModelName?: string;
+  lightingPreset?: LightingPreset;
+  brushSettings?: Partial<BrushSettings>;
+  skySettings?: Partial<SkySettings>;
+  showGrid?: boolean;
+  showWireframe?: boolean;
 }
 
 

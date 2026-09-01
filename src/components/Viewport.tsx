@@ -203,6 +203,32 @@ export const Viewport: React.FC<ViewportProps> = ({
     engineRef.current?.setGrid(showGrid);
   }, [showGrid]);
 
+  // Global Delete / Backspace key listener to delete selected 3D strokes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' ||
+          document.activeElement.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const engine = engineRef.current;
+        if (engine && engine.getSelectedStrokeId()) {
+          e.preventDefault();
+          engine.deleteSelectedStroke();
+          triggerHaptic(30);
+          showGestureToast('Curve Deleted', 'Selected 3D stroke removed');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Convert client pointer coordinate to normalized device coordinates (-1 to 1)
   const getNormalizedCoords = (e: React.PointerEvent<HTMLDivElement> | PointerEvent) => {
     if (!containerRef.current) return { x: 0, y: 0 };
@@ -311,6 +337,19 @@ export const Viewport: React.FC<ViewportProps> = ({
     if (isCameraAction) {
       setIsOrbiting(true);
       lastPointerPos.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+
+    // Pointer Selection Tool (Stroke Raycast & Selection)
+    if (tool === 'pointer' || tool === 'select') {
+      const hitStrokeId = engine.raycastStroke(coords.x, coords.y);
+      if (hitStrokeId) {
+        engine.selectStroke(hitStrokeId);
+        triggerHaptic(20);
+        showGestureToast('Curve Selected', `ID: ${hitStrokeId.slice(0, 8)}... (Press Del to remove)`);
+      } else {
+        engine.selectStroke(null);
+      }
       return;
     }
 

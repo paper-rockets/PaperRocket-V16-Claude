@@ -66,10 +66,18 @@ import {
   Clipboard,
   Eye,
   EyeOff,
+  Maximize,
+  Minimize,
   Maximize2,
   Glasses,
   Download,
+  FolderOpen,
+  Moon,
+  Save,
+  Upload,
 } from 'lucide-react';
+import { isFullscreen, toggleFullscreen, subscribeFullscreenChange } from '../utils/fullscreen';
+
 
 interface ToolbarProps {
   tool: ToolType;
@@ -83,6 +91,9 @@ interface ToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
+  onSaveProject?: () => void;
+  onLoadProject?: (file: File) => void;
   engine?: StudioEngine | null;
   onSelectPrimitiveName?: (name: string) => void;
   isGizmoActive?: boolean;
@@ -235,26 +246,47 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenARViewer,
   onOpenScaffolding,
   onOpenClipboard,
+  theme = 'dark',
+  onToggleTheme,
+  onSaveProject,
+  onLoadProject,
   onOpenBrushSettings,
   onOpenColorStudio,
 }) => {
   const [selectionMode, setSelectionMode] = useState<'pointer' | 'lasso' | 'marquee'>('pointer');
   const [activePrimitive, setActivePrimitive] = useState<string | null>(null);
   const [showPrimitivesMenu, setShowPrimitivesMenu] = useState<boolean>(false);
+  const [showBrushShelf, setShowBrushShelf] = useState<boolean>(false);
+  const [showSceneShelf, setShowSceneShelf] = useState<boolean>(false);
+  const [showSettingsShelf, setShowSettingsShelf] = useState<boolean>(false);
+  const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [isPinned, setIsPinned] = useState<boolean>(false);
   const [showColorModal, setShowColorModal] = useState<boolean>(false);
   const [showBrushPickerModal, setShowBrushPickerModal] = useState<boolean>(false);
   const [showPaintPickerModal, setShowPaintPickerModal] = useState<boolean>(false);
-  const [colorPickerTab, setColorPickerTab] = useState<'spectrum' | 'temperature' | 'swatches'>('spectrum');
-  const [showSizePopup, setShowSizePopup] = useState<boolean>(false);
-  const [showOpacityPopup, setShowOpacityPopup] = useState<boolean>(false);
-  const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [customHex, setCustomHex] = useState<string>(brushSettings.color || '#000000');
-  const [actionConfirmed, setActionConfirmed] = useState<boolean>(false);
+  const [isBrowserFs, setIsBrowserFs] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsBrowserFs(isFullscreen());
+    const unsub = subscribeFullscreenChange((active) => {
+      setIsBrowserFs(active);
+    });
+    return unsub;
+  }, []);
 
   const nativeColorInputRef = useRef<HTMLInputElement>(null);
+  const loadFileInputRef = useRef<HTMLInputElement>(null);
   const autoCollapseTimerRef = useRef<number | null>(null);
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onLoadProject) {
+      onLoadProject(file);
+    }
+    if (e.target) e.target.value = '';
+  };
 
   useEffect(() => {
     if (brushSettings.color) {
@@ -262,65 +294,70 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   }, [brushSettings.color]);
 
+  const closeAllShelves = () => {
+    setShowPrimitivesMenu(false);
+    setShowBrushShelf(false);
+    setShowSceneShelf(false);
+    setShowSettingsShelf(false);
+    setShowMoreMenu(false);
+  };
+
+  const toggleShelf = (shelf: 'primitives' | 'brush' | 'scene' | 'settings') => {
+    if (shelf === 'primitives') {
+      const next = !showPrimitivesMenu;
+      closeAllShelves();
+      setShowPrimitivesMenu(next);
+    } else if (shelf === 'brush') {
+      const next = !showBrushShelf;
+      closeAllShelves();
+      setShowBrushShelf(next);
+    } else if (shelf === 'scene') {
+      const next = !showSceneShelf;
+      closeAllShelves();
+      setShowSceneShelf(next);
+    } else if (shelf === 'settings') {
+      const next = !showSettingsShelf;
+      closeAllShelves();
+      setShowSettingsShelf(next);
+    }
+  };
+
   // Auto-collapse on global canvas pointer interaction unless pinned
   useEffect(() => {
     const handleCanvasPointerDown = (e: PointerEvent) => {
       if (isPinned) return;
       const target = e.target as HTMLElement;
-      // If clicking inside the toolbar or modals, do not collapse
       if (
         target &&
         (target.closest('#mody-left-toolbar-dock') ||
           target.closest('#mody-left-toolbar-minimized') ||
           target.closest('#mody-primitives-flyout-menu') ||
+          target.closest('#mody-brush-shelf-flyout') ||
+          target.closest('#mody-scene-shelf-flyout') ||
+          target.closest('#mody-settings-shelf-flyout') ||
           target.closest('.fixed'))
       ) {
         return;
       }
       setIsMinimized(true);
-      setShowPrimitivesMenu(false);
+      closeAllShelves();
     };
 
     window.addEventListener('pointerdown', handleCanvasPointerDown);
     return () => window.removeEventListener('pointerdown', handleCanvasPointerDown);
   }, [isPinned]);
 
-  // Close size/opacity popovers and menus when clicking outside or pressing Escape
+  // Close flyouts on Escape
   useEffect(() => {
-    if (!showSizePopup && !showOpacityPopup && !showMoreMenu) return;
-
-    const handleClickOutsidePopovers = (e: MouseEvent | PointerEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        !target.closest('#toolbar-brush-size-popover') &&
-        !target.closest('#toolbar-brush-opacity-popover') &&
-        !target.closest('#toolbar-size-pill-trigger') &&
-        !target.closest('#toolbar-opacity-pill-trigger') &&
-        !target.closest('#toolbar-more-menu') &&
-        !target.closest('#toolbar-more-menu-trigger')
-      ) {
-        setShowSizePopup(false);
-        setShowOpacityPopup(false);
-        setShowMoreMenu(false);
-      }
-    };
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowSizePopup(false);
-        setShowOpacityPopup(false);
-        setShowMoreMenu(false);
+        closeAllShelves();
       }
     };
 
-    window.addEventListener('pointerdown', handleClickOutsidePopovers);
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', handleClickOutsidePopovers);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [showSizePopup, showOpacityPopup, showMoreMenu]);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const clearCollapseTimer = () => {
     if (autoCollapseTimerRef.current) {
@@ -334,7 +371,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     clearCollapseTimer();
     autoCollapseTimerRef.current = window.setTimeout(() => {
       setIsMinimized(true);
-      setShowPrimitivesMenu(false);
+      closeAllShelves();
     }, delay);
   };
 
@@ -419,16 +456,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
-  const handleConfirmAction = () => {
-    setActionConfirmed(true);
-    setTimeout(() => setActionConfirmed(false), 800);
-  };
-
   // Convert raw 3D brush size (0.01..0.25) to clean string
   const displayPxSize = (brushSettings.size * 30).toFixed(1) + 'px';
-
-  const activePrimitiveItem = PRIMITIVE_ITEMS.find((p) => p.id === activePrimitive);
-  const ActivePrimitiveIcon = activePrimitiveItem ? activePrimitiveItem.icon : Box;
 
   return (
     <div
@@ -447,20 +476,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         /* MINIMIZED SLIM VERTICAL RAIL - MINIMIZES SIDEWAYS TO THE LEFT */
         <div
           id="mody-left-toolbar-minimized"
-          className="w-10 sm:w-11 py-2 px-1 rounded-2xl bg-[#141519]/95 backdrop-blur-xl border border-zinc-800 text-zinc-200 shadow-2xl flex flex-col items-center gap-1.5 transition-all animate-in fade-in slide-in-from-left duration-150"
+          className={`w-12 sm:w-13 py-2.5 px-1.5 rounded-2xl backdrop-blur-xl border shadow-2xl flex flex-col items-center gap-2 transition-all animate-in fade-in slide-in-from-left duration-150 ${
+            theme === 'light'
+              ? 'bg-white/95 border-neutral-200 text-neutral-800'
+              : 'bg-[#141519]/95 border-zinc-800 text-zinc-200'
+          }`}
         >
           {/* Expand Sideways Button */}
           <button
             type="button"
             onClick={() => setIsMinimized(false)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+            className={`p-2 rounded-xl transition-colors ${
+              theme === 'light'
+                ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+            }`}
             title="Expand Tool Menu Sideways"
           >
-            <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+            <ChevronRight className="w-4.5 h-4.5 stroke-[2.2]" />
           </button>
 
           {/* Divider */}
-          <div className="w-5 h-[1px] bg-zinc-800" />
+          <div className={`w-6 h-[1px] ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
 
           {/* Active Tool Icon */}
           <button
@@ -468,26 +505,33 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={() => {
               setTool(tool === 'brush' ? 'eraser' : 'brush');
             }}
-            className={`p-1.5 rounded-lg transition-all ${
+            className={`p-2 rounded-xl transition-all ${
               tool === 'brush'
-                ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                : theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
             }`}
             title={`Active Tool: ${tool}. Click to toggle brush/eraser`}
           >
             {tool === 'eraser' ? (
-              <Scissors className="w-4 h-4 stroke-[2]" />
+              <Scissors className="w-4.5 h-4.5 stroke-[2]" />
             ) : (
-              <Paintbrush className="w-4 h-4 stroke-[2]" />
+              <Paintbrush className="w-4.5 h-4.5 stroke-[2]" />
             )}
           </button>
 
           {/* Size Pill */}
           <button
             type="button"
-            onClick={() => setShowSizePopup(!showSizePopup)}
-            className="w-full py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[9px] font-mono text-zinc-200 flex items-center justify-center"
-            title="Adjust Size"
+            onClick={() => {
+              setIsMinimized(false);
+              toggleShelf('brush');
+            }}
+            className={`w-full py-1.5 rounded-lg border text-[10px] font-mono flex items-center justify-center transition-colors ${
+              theme === 'light'
+                ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
+                : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+            }`}
+            title="Adjust Size & Brush Settings"
           >
             <span>{displayPxSize.replace('px', '')}</span>
           </button>
@@ -497,16 +541,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             type="button"
             onClick={() => {
               if (onOpenColorStudio) onOpenColorStudio();
-              else {
-                setColorPickerTab('spectrum');
-                setShowColorModal(true);
-              }
+              else setShowColorModal(true);
             }}
-            className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="p-1 rounded-xl hover:bg-white/10 transition-colors"
             title="Choose Color (Color Studio)"
           >
             <div
-              className="w-4 h-4 rounded-full border border-black/40 shadow-inner"
+              className="w-5 h-5 rounded-full border border-black/30 shadow-inner"
               style={{ backgroundColor: brushSettings.color }}
             />
           </button>
@@ -516,122 +557,163 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <button
               type="button"
               onClick={onOpenBrushSettings}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+              className={`p-2 rounded-xl transition-colors ${
+                theme === 'light'
+                  ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
               title="Brush Dynamics & Surface Settings"
             >
-              <Sliders className="w-3.5 h-3.5 stroke-[2]" />
+              <Sliders className="w-4 h-4 stroke-[2]" />
             </button>
           )}
 
-          {/* Clone Button (Requirement 2) */}
+          {/* Clone Button */}
           {onCloneModel && (
             <button
               type="button"
               onClick={onCloneModel}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+              className={`p-2 rounded-xl transition-colors ${
+                theme === 'light'
+                  ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
               title="Clone 3D Model / Strokes"
             >
-              <Copy className="w-3.5 h-3.5 stroke-[2]" />
+              <Copy className="w-4 h-4 stroke-[2]" />
             </button>
           )}
 
           {/* Divider */}
-          <div className="w-5 h-[1px] bg-zinc-800" />
+          <div className={`w-6 h-[1px] ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
 
-          {/* Undo (Requirement 2) */}
+          {/* Undo */}
           <button
             type="button"
             onClick={onUndo}
             disabled={!canUndo}
-            className={`p-1.5 rounded-lg transition-all ${
-              canUndo ? 'text-zinc-300 hover:text-white hover:bg-white/10' : 'text-zinc-600 opacity-40 cursor-not-allowed'
+            className={`p-2 rounded-xl transition-all ${
+              canUndo
+                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                : 'text-zinc-500 opacity-40 cursor-not-allowed'
             }`}
             title="Undo (Ctrl+Z)"
           >
-            <Undo2 className="w-3.5 h-3.5 stroke-[2]" />
+            <Undo2 className="w-4 h-4 stroke-[2]" />
           </button>
 
-          {/* Redo (Requirement 2) */}
+          {/* Redo */}
           <button
             type="button"
             onClick={onRedo}
             disabled={!canRedo}
-            className={`p-1.5 rounded-lg transition-all ${
-              canRedo ? 'text-zinc-300 hover:text-white hover:bg-white/10' : 'text-zinc-600 opacity-40 cursor-not-allowed'
+            className={`p-2 rounded-xl transition-all ${
+              canRedo
+                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                : 'text-zinc-500 opacity-40 cursor-not-allowed'
             }`}
             title="Redo (Ctrl+Y)"
           >
-            <Redo2 className="w-3.5 h-3.5 stroke-[2]" />
+            <Redo2 className="w-4 h-4 stroke-[2]" />
           </button>
         </div>
       ) : (
-        /* EXPANDED 3-COLUMN CAD TOOL DOCK (EXPANDS SIDEWAYS) */
+        /* EXPANDED COMPACT CAD TOOL DOCK (WITH HORIZONTAL FLYOUT SHELVES EXPANDING TO THE RIGHT) */
         <div
           id="mody-left-toolbar-dock"
-          className="w-[144px] sm:w-[150px] max-h-[calc(100vh-80px)] overflow-y-auto scrollbar-none p-2 rounded-2xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] text-[#e2e4ea] shadow-2xl flex flex-col gap-1.5 transition-all animate-in fade-in slide-in-from-left duration-150"
+          className={`relative w-[156px] sm:w-[164px] p-2 rounded-2xl backdrop-blur-xl border shadow-2xl flex flex-col gap-1.5 transition-all animate-in fade-in slide-in-from-left duration-150 select-none ${
+            theme === 'light'
+              ? 'bg-white/95 border-neutral-200 text-neutral-800'
+              : 'bg-[#18191d]/95 border-[#2b2c32] text-[#e2e4ea]'
+          }`}
         >
-          {/* 1. TOP SELECTION MODES & PIN / COLLAPSE ROW */}
+          {/* Hidden File Input for Loading .remix3d project */}
+          <input
+            ref={loadFileInputRef}
+            type="file"
+            accept=".remix3d,.json"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
+          {/* 1. TOP HEADER: SELECTION MODES + COMPACT PRIMITIVES BOX + PIN + COLLAPSE */}
           <div className="flex items-center justify-between px-0.5">
             <div className="flex items-center gap-0.5">
               <button
                 type="button"
                 onClick={() => {
                   setSelectionMode('pointer');
-                  setTool('brush');
+                  setTool('pointer');
                   if (!isPinned) scheduleAutoCollapse(1500);
                 }}
                 className={`p-1.5 rounded-lg transition-all ${
-                  selectionMode === 'pointer'
-                    ? 'bg-[#2e303b] text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  tool === 'pointer' || selectionMode === 'pointer'
+                    ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm' : 'bg-[#2e303b] text-white shadow-sm'
+                    : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="Pointer / Selection"
+                title="Pointer / Stroke Selection"
               >
-                <MousePointer2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                <MousePointer2 className="w-4 h-4 stroke-[2.2]" />
               </button>
 
               <button
                 type="button"
                 onClick={() => {
                   setSelectionMode('lasso');
+                  setTool('pointer');
                   if (!isPinned) scheduleAutoCollapse(1500);
                 }}
                 className={`p-1.5 rounded-lg transition-all ${
                   selectionMode === 'lasso'
-                    ? 'bg-[#2e303b] text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                    ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm' : 'bg-[#2e303b] text-white shadow-sm'
+                    : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
                 title="Lasso Selection"
               >
-                <CircleDashed className="w-3.5 h-3.5 stroke-[1.8]" />
+                <CircleDashed className="w-4 h-4 stroke-[1.8]" />
               </button>
 
+              {/* Muted Compact Primitives Box Icon */}
               <button
+                id="btn-primitives-menu-trigger"
                 type="button"
-                onClick={() => {
-                  setSelectionMode('marquee');
-                  if (!isPinned) scheduleAutoCollapse(1500);
-                }}
-                className={`p-1.5 rounded-lg transition-all ${
-                  selectionMode === 'marquee'
-                    ? 'bg-[#2e303b] text-white shadow-sm'
-                    : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                onClick={() => toggleShelf('primitives')}
+                className={`p-1.5 rounded-lg transition-all border ${
+                  showPrimitivesMenu || activePrimitive
+                    ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white shadow-sm' : 'bg-sky-500/20 border-sky-400/50 text-sky-300 shadow-sm'
+                    : theme === 'light' ? 'border-neutral-200 bg-neutral-50 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="Marquee Box Selection"
+                title="3D Primitives (Cube, Sphere, Cylinder, Torus, Capsule, Cone, Pyramid, Disk)"
               >
-                <Scan className="w-3.5 h-3.5 stroke-[1.8]" />
+                <Box className="w-4 h-4 stroke-[1.8]" />
               </button>
             </div>
 
             <div className="flex items-center gap-0.5">
+              {/* Fullscreen Toggle */}
+              <button
+                type="button"
+                onClick={() => toggleFullscreen()}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isBrowserFs
+                    ? theme === 'light' ? 'text-sky-600 bg-sky-100' : 'text-sky-300 bg-sky-500/20'
+                    : theme === 'light' ? 'text-neutral-400 hover:text-neutral-700' : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+                title={isBrowserFs ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              >
+                {isBrowserFs ? <Minimize className="w-3.5 h-3.5 stroke-[2]" /> : <Maximize className="w-3.5 h-3.5 stroke-[2]" />}
+              </button>
+
               {/* Pin Toggle */}
               <button
                 type="button"
                 onClick={() => setIsPinned(!isPinned)}
                 className={`p-1.5 rounded-lg transition-colors ${
-                  isPinned ? 'text-white bg-white/10' : 'text-neutral-500 hover:text-neutral-300'
+                  isPinned
+                    ? theme === 'light' ? 'text-neutral-900 bg-neutral-100' : 'text-white bg-white/10'
+                    : theme === 'light' ? 'text-neutral-400 hover:text-neutral-700' : 'text-neutral-500 hover:text-neutral-300'
                 }`}
-                title={isPinned ? 'Menu is Pinned (Will not auto-collapse)' : 'Auto-Collapse is Active (Click to Pin Open)'}
+                title={isPinned ? 'Pinned Open' : 'Click to Pin Open'}
               >
                 {isPinned ? <Pin className="w-3.5 h-3.5 stroke-[2]" /> : <PinOff className="w-3.5 h-3.5 stroke-[1.8]" />}
               </button>
@@ -639,8 +721,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               {/* Collapse sideways button */}
               <button
                 type="button"
-                onClick={() => setIsMinimized(true)}
-                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+                onClick={() => {
+                  setIsMinimized(true);
+                  closeAllShelves();
+                }}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  theme === 'light'
+                    ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                    : 'text-neutral-400 hover:text-white hover:bg-white/10'
+                }`}
                 title="Minimize Menu Sideways"
               >
                 <ChevronLeft className="w-3.5 h-3.5 stroke-[2]" />
@@ -649,88 +738,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </div>
 
           {/* Divider */}
-          <div className="h-[1px] bg-[#27282f] w-full" />
+          <div className={`h-[1px] w-full ${theme === 'light' ? 'bg-neutral-200' : 'bg-[#27282f]'}`} />
 
-          {/* 2. 3D PRIMITIVES COMBO BUTTON & FLYOUT */}
-          <div className="relative px-0.5">
-            <button
-              id="btn-primitives-menu-trigger"
-              type="button"
-              onClick={() => {
-                setShowPrimitivesMenu(!showPrimitivesMenu);
-                if (!isPinned) scheduleAutoCollapse(3000);
-              }}
-              className={`w-full py-1.5 px-2 rounded-lg border text-[11px] font-medium flex items-center justify-between transition-all ${
-                showPrimitivesMenu || activePrimitive
-                  ? 'bg-[#2e303b] border-neutral-600 text-white shadow-sm'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
-              }`}
-              title="3D Primitives (Cube, Sphere, Cylinder, Torus, Capsule, Cone, Pyramid, Disk)"
-            >
-              <div className="flex items-center gap-1.5 min-w-0">
-                <ActivePrimitiveIcon className="w-3.5 h-3.5 stroke-[1.8] text-white shrink-0" />
-                <span className="truncate text-[10px] font-semibold">
-                  {activePrimitiveItem ? activePrimitiveItem.name : 'Primitives'}
-                </span>
-              </div>
-              <ChevronRight
-                className={`w-3.5 h-3.5 text-zinc-400 shrink-0 transition-transform ${
-                  showPrimitivesMenu ? 'rotate-90 sm:rotate-0' : ''
-                }`}
-              />
-            </button>
-
-            {/* Primitives Flyout Popover Menu */}
-            {showPrimitivesMenu && (
-              <div
-                id="mody-primitives-flyout-menu"
-                className="absolute left-full ml-2 top-0 w-48 p-2 rounded-2xl bg-[#141519]/98 backdrop-blur-2xl border border-zinc-800 shadow-2xl z-50 flex flex-col gap-1 text-xs animate-in fade-in zoom-in-95 select-none"
-              >
-                <div className="flex items-center justify-between px-1 pb-1 border-b border-zinc-800 text-[10px] font-mono text-zinc-400">
-                  <span>3D PRIMITIVES</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowPrimitivesMenu(false)}
-                    className="text-zinc-500 hover:text-white p-0.5 rounded"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1 pt-1">
-                  {PRIMITIVE_ITEMS.map((item) => {
-                    const ItemIcon = item.icon;
-                    const isSelected = activePrimitive === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        id={`primitive-btn-${item.id}`}
-                        type="button"
-                        onClick={() => {
-                          handleSpawnPrimitive(item.id);
-                          setShowPrimitivesMenu(false);
-                        }}
-                        className={`flex items-center gap-1.5 p-1.5 rounded-lg text-left transition-all ${
-                          isSelected
-                            ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                            : 'text-zinc-300 hover:text-white hover:bg-white/10'
-                        }`}
-                        title={`Spawn Primitive ${item.name}`}
-                      >
-                        <ItemIcon className="w-3.5 h-3.5 shrink-0 stroke-[1.8]" />
-                        <span className="text-[11px] truncate">{item.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div className="h-[1px] bg-[#27282f] w-full" />
-
-          {/* 3. SCULPTING & LINE TOOLS GRID (3 COLUMNS) */}
+          {/* 2. CORE 3x3 SCULPTING & DRAWING TOOLS GRID */}
           <div className="grid grid-cols-3 gap-1 px-0.5">
             {/* Direct Sketch Brush */}
             <button
@@ -739,14 +749,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 setTool('brush');
                 if (!isPinned) scheduleAutoCollapse(1200);
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                 tool === 'brush'
-                  ? 'bg-[#2e303b] text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm' : 'bg-[#2e303b] text-white shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
               title="3D Pen Tool"
             >
-              <Pen className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Pen className="w-4 h-4 stroke-[1.8]" />
             </button>
 
             {/* Wire / Curve Tool */}
@@ -756,14 +766,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 setTool('brush');
                 if (!isPinned) scheduleAutoCollapse(1200);
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                 tool === 'brush'
-                  ? 'bg-[#2e303b] text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm' : 'bg-[#2e303b] text-white shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
               title="3D Curve Sketch"
             >
-              <Spline className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Spline className="w-4 h-4 stroke-[1.8]" />
             </button>
 
             {/* Ribbon / Tube Profile */}
@@ -772,17 +782,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               onClick={() => {
                 setBrushSettings((prev) => ({
                   ...prev,
-                  strokeProfile: prev.strokeProfile === 'ribbon' ? 'tube' : 'ribbon',
+                  profile: prev.profile === 'ribbon' ? 'tube' : 'ribbon',
                 }));
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
-                brushSettings.strokeProfile === 'ribbon'
-                  ? 'bg-[#2e303b] text-white shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
+                brushSettings.profile === 'ribbon'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm' : 'bg-[#2e303b] text-white shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
               title="Stroke Profile: Ribbon / Tube"
             >
-              <Layers className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Layers className="w-4 h-4 stroke-[1.8]" />
             </button>
 
             {/* Shape Snapping Engine */}
@@ -794,94 +804,71 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   shapeSnapping: !prev.shapeSnapping,
                 }));
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                 brushSettings.shapeSnapping
-                  ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
-              title={`Draw Shape Snapping: ${brushSettings.shapeSnapping ? 'ON (Auto-snaps lines, circles, arcs)' : 'OFF'}`}
+              title={`Draw Shape Snapping: ${brushSettings.shapeSnapping ? 'ON' : 'OFF'}`}
             >
-              <Shapes className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Shapes className="w-4 h-4 stroke-[1.8]" />
             </button>
 
             {/* Eraser / Vacuum Purge Mode */}
-            <div className="relative flex items-center justify-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setTool('eraser');
-                  if (!isPinned) scheduleAutoCollapse(1200);
-                }}
-                className={`p-1.5 rounded-lg flex items-center justify-center w-full transition-all ${
-                  tool === 'eraser'
-                    ? 'bg-white text-zinc-950 shadow-sm font-bold'
-                    : 'text-neutral-400 hover:text-white hover:bg-white/5'
-                }`}
-                title={
-                  brushSettings.eraserMode === 'vacuum'
-                    ? 'Vacuum Eraser (Continuous Purge on Hit)'
-                    : 'Cutout Eraser (Negative Space Mask)'
-                }
-              >
-                <Scissors className="w-3.5 h-3.5 stroke-[1.8]" />
-                {brushSettings.eraserMode === 'vacuum' && (
-                  <span className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 bg-white rounded-full" />
-                )}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setTool('eraser');
+                if (!isPinned) scheduleAutoCollapse(1200);
+              }}
+              className={`p-2 rounded-xl flex items-center justify-center transition-all relative ${
+                tool === 'eraser'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white shadow-sm font-bold' : 'bg-white text-zinc-950 shadow-sm font-bold'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+              title="Cutout / Vacuum Eraser"
+            >
+              <Scissors className="w-4 h-4 stroke-[1.8]" />
+              {brushSettings.eraserMode === 'vacuum' && (
+                <span className="absolute bottom-1 right-1 w-1.5 h-1.5 bg-sky-400 rounded-full" />
+              )}
+            </button>
 
-            {/* 3D Brush Picker */}
+            {/* 3D Brush Picker Preset Studio */}
             <button
               type="button"
               onClick={() => {
                 setShowBrushPickerModal(true);
                 if (!isPinned) scheduleAutoCollapse(1200);
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                 tool === 'brush_picker' || showBrushPickerModal
                   ? 'bg-sky-400 text-zinc-950 font-bold shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
-              title="3D Brush Picker & Stroke DNA Presets"
+              title="3D Brush Presets & DNA Studio"
             >
-              <Paintbrush className="w-3.5 h-3.5 stroke-[1.8]" />
-            </button>
-
-            {/* 3D Paint & Finish Picker */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowPaintPickerModal(true);
-                if (!isPinned) scheduleAutoCollapse(1200);
-              }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
-                tool === 'paint_picker' || showPaintPickerModal
-                  ? 'bg-purple-400 text-zinc-950 font-bold shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
-              }`}
-              title="3D Paint & Material Finish Picker"
-            >
-              <Palette className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Paintbrush className="w-4 h-4 stroke-[1.8]" />
             </button>
 
             {/* Eyedropper DNA & Surface Sampler */}
             <button
               type="button"
               onClick={() => {
-                setTool('paint_picker');
+                setTool('eyedropper');
                 if (!isPinned) scheduleAutoCollapse(1200);
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
-                tool === 'paint_picker' || tool === 'eyedropper'
-                  ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
+                tool === 'eyedropper'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
-              title="True Eyedropper & Surface Finish Sampler"
+              title="Eyedropper Surface Finish Sampler"
             >
-              <Pipette className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Pipette className="w-4 h-4 stroke-[1.8]" />
             </button>
 
-            {/* Measure / Ruler */}
+            {/* Measure / Straight Line */}
             <button
               type="button"
               onClick={() => {
@@ -890,506 +877,756 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                   straightLineMode: !prev.straightLineMode,
                 }));
               }}
-              className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
                 brushSettings.straightLineMode
-                  ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
               title="Straight Line Constraint"
             >
-              <Ruler className="w-3.5 h-3.5 stroke-[1.8]" />
+              <Ruler className="w-4 h-4 stroke-[1.8]" />
             </button>
-          </div>
 
-          {/* Divider */}
-          <div className="h-[1px] bg-zinc-800 w-full" />
-
-          {/* Quick Drawing Space: Surface Conformal vs 3D Air */}
-          <div className="flex flex-col gap-1 px-0.5">
-            <div className="flex items-center justify-between text-[8px] font-mono text-zinc-400 uppercase tracking-wider px-0.5">
-              <span>Drawing Space</span>
-              {onOpenBrushSettings && (
-                <button
-                  type="button"
-                  onClick={onOpenBrushSettings}
-                  className="text-zinc-400 hover:text-white transition-colors"
-                  title="Open Brush Dynamics & Surface Settings"
-                >
-                  <Sliders className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setBrushSettings((prev) => ({ ...prev, drawingMode: 'surface' }))}
-                className={`py-1 px-1 rounded-md text-[9px] font-medium flex items-center justify-center gap-1 transition-all ${
-                  brushSettings.drawingMode !== 'spatial_3d'
-                    ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-                title="Surface Conformal (Snaps to 3D geometry)"
-              >
-                <Shapes className="w-3 h-3" />
-                <span>Surface</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBrushSettings((prev) => ({ ...prev, drawingMode: 'spatial_3d' }))}
-                className={`py-1 px-1 rounded-md text-[9px] font-medium flex items-center justify-center gap-1 transition-all ${
-                  brushSettings.drawingMode === 'spatial_3d'
-                    ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-                title="Free 3D Spatial (Draws in mid-air)"
-              >
-                <Compass className="w-3 h-3" />
-                <span>3D Air</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Material Mode: Flat | PBR | Glow | Mask */}
-          <div className="flex flex-col gap-1 px-0.5">
-            <div className="flex items-center justify-between text-[8px] font-mono text-zinc-400 uppercase tracking-wider px-0.5">
-              <span>Material</span>
-              <span className="text-[8px] font-mono text-zinc-500 capitalize">{brushSettings.materialType || 'shadeless'}</span>
-            </div>
-            <div className="grid grid-cols-4 gap-0.5 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
-              {[
-                { id: 'shadeless' as MaterialType, label: 'Flat' },
-                { id: 'shaded' as MaterialType, label: 'PBR' },
-                { id: 'glow' as MaterialType, label: 'Glow' },
-                { id: 'cutout' as MaterialType, label: 'Mask' },
-              ].map((mat) => {
-                const isSel = (brushSettings.materialType || 'shadeless') === mat.id;
-                return (
-                  <button
-                    key={mat.id}
-                    type="button"
-                    onClick={() => setBrushSettings((prev) => ({ ...prev, materialType: mat.id }))}
-                    className={`py-1 rounded text-[9px] font-medium text-center transition-all ${
-                      isSel
-                        ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                    title={`Material Shader: ${mat.label}`}
-                  >
-                    {mat.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="h-[1px] bg-zinc-800 w-full" />
-
-          {/* 4. DYNAMIC BRUSH SIZE SCRUB RING */}
-          <div className="relative flex items-center justify-center px-0.5">
-            <button
-              type="button"
-              onClick={() => setShowSizePopup(!showSizePopup)}
-              className="w-full py-1 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 flex items-center justify-center gap-2 text-xs font-mono transition-all"
-              title="Adjust Brush Size"
-            >
-              <div
-                className="w-3 h-3 rounded-full border border-neutral-300 transition-all"
-                style={{
-                  transform: `scale(${Math.min(1.4, Math.max(0.6, brushSettings.size * 10))})`,
-                }}
-              />
-              <span className="text-[11px] text-zinc-300 font-mono">{displayPxSize}</span>
-            </button>
-          </div>
-
-          {/* 5. COLOR WHEELS & SWATCHES ROW */}
-          <div className="flex items-center justify-between px-1 py-0.5">
-            {/* Active Brush Swatch Button */}
+            {/* 3D Paint & Material Studio trigger */}
             <button
               type="button"
               onClick={() => {
                 if (onOpenColorStudio) onOpenColorStudio();
-                else setShowPaintPickerModal(true);
+                else setShowColorModal(true);
+                if (!isPinned) scheduleAutoCollapse(1200);
               }}
-              className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-              title="Active Color (Click for Color Studio)"
+              className={`p-2 rounded-xl flex items-center justify-center transition-all ${
+                tool === 'paint_picker'
+                  ? 'bg-purple-500 text-white font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+              title="Color & Material Studio"
             >
-              <div
-                className="w-5 h-5 rounded-full border border-black/40 shadow-inner"
-                style={{ backgroundColor: brushSettings.color }}
-              />
-            </button>
-
-            {/* Color Wheel 1 (Spectrum) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenColorStudio) {
-                  onOpenColorStudio();
-                } else {
-                  setColorPickerTab('spectrum');
-                  setShowColorModal(true);
-                }
-              }}
-              className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-              title="Spectrum Color Picker Studio"
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 via-emerald-400 to-indigo-500 border border-white/20 shadow-sm" />
-            </button>
-
-            {/* Color Wheel 2 (Value / Temperature) */}
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenColorStudio) {
-                  onOpenColorStudio();
-                } else {
-                  setColorPickerTab('temperature');
-                  setShowColorModal(true);
-                }
-              }}
-              className="p-1 rounded-lg hover:bg-white/10 transition-colors"
-              title="Temperature & Value Spectrum"
-            >
-              <div className="w-5 h-5 rounded-full bg-gradient-to-b from-sky-400 via-neutral-100 to-amber-400 border border-white/20 shadow-sm" />
+              <Palette className="w-4 h-4 stroke-[1.8]" />
             </button>
           </div>
 
-          {/* 6. PALETTE, COLOR SQUARE, OPACITY DROPLET */}
-          <div className="flex items-center justify-between px-1 py-0.5">
-            {/* Palette Icon */}
+          {/* Divider */}
+          <div className={`h-[1px] w-full ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
+
+          {/* 3. HORIZONTAL SHELF FLYOUT TRIGGER BUTTONS (EXPAND TO THE RIGHT) */}
+          <div className="flex flex-col gap-1 px-0.5">
+            {/* Brush & Stroke Setup Flyout Trigger */}
             <button
               type="button"
-              onClick={() => {
-                setShowPaintPickerModal(true);
-              }}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="3D Paint & Material Palettes"
+              onClick={() => toggleShelf('brush')}
+              className={`w-full py-1.5 px-2 rounded-xl border text-[11px] font-medium flex items-center justify-between transition-all ${
+                showBrushShelf
+                  ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white shadow-sm' : 'bg-sky-500/20 border-sky-400/50 text-sky-300 shadow-sm'
+                  : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+              title="Brush Size, Material & Space (Expands to the Right)"
             >
-              <Palette className="w-3.5 h-3.5 stroke-[1.8]" />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div
+                  className="w-4 h-4 rounded-full border border-black/30 shadow-inner shrink-0"
+                  style={{ backgroundColor: brushSettings.color }}
+                />
+                <span className="font-mono text-[10.5px] font-semibold">{displayPxSize}</span>
+              </div>
+              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${showBrushShelf ? 'translate-x-0.5 text-sky-400' : 'text-zinc-500'}`} />
             </button>
 
-            {/* Color Square Swatch with Native Color Input */}
-            <label
-              className="w-5 h-5 rounded-md border border-neutral-600 shadow-sm cursor-pointer overflow-hidden block relative hover:scale-105 transition-transform"
-              style={{ backgroundColor: brushSettings.color }}
-              title="Choose Custom Color"
-            >
-              <input
-                ref={nativeColorInputRef}
-                type="color"
-                value={brushSettings.color}
-                onChange={(e) => handleSelectColor(e.target.value)}
-                className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
-              />
-            </label>
-
-            {/* Opacity Droplet */}
+            {/* Scene & Studio Shelf Flyout Trigger */}
             <button
               type="button"
-              onClick={() => setShowOpacityPopup(!showOpacityPopup)}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Brush Opacity"
+              onClick={() => toggleShelf('scene')}
+              className={`w-full py-1.5 px-2 rounded-xl border text-[11px] font-medium flex items-center justify-between transition-all ${
+                showSceneShelf
+                  ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white shadow-sm' : 'bg-purple-500/20 border-purple-400/50 text-purple-300 shadow-sm'
+                  : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+              title="Scene, Models, Grid & Save/Load (Expands to the Right)"
             >
-              <Droplet className="w-3.5 h-3.5 stroke-[1.8]" />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <FolderArchive className="w-4 h-4 text-purple-400 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Scene & Tools</span>
+              </div>
+              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${showSceneShelf ? 'translate-x-0.5 text-purple-400' : 'text-zinc-500'}`} />
+            </button>
+
+            {/* Viewport Settings Shelf Flyout Trigger */}
+            <button
+              type="button"
+              onClick={() => toggleShelf('settings')}
+              className={`w-full py-1.5 px-2 rounded-xl border text-[11px] font-medium flex items-center justify-between transition-all ${
+                showSettingsShelf
+                  ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white shadow-sm' : 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 shadow-sm'
+                  : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+              }`}
+              title="Viewport, Controllers & Scale (Expands to the Right)"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Touchpad className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-[10.5px] font-semibold">Settings</span>
+              </div>
+              <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform ${showSettingsShelf ? 'translate-x-0.5 text-emerald-400' : 'text-zinc-500'}`} />
             </button>
           </div>
 
-          {/* 7. STUDIO & SCENE ACTIONS (INTEGRATED FROM TOP MENU BAR) */}
-          <div className="flex flex-col gap-1 pt-1 border-t border-zinc-800">
-            <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider px-0.5">Scene & Studio</span>
-            <div className="grid grid-cols-3 gap-1 px-0.5">
-              {/* Assets / Model Library */}
-              {onOpenModelLibrary && (
-                <button
-                  type="button"
-                  onClick={onOpenModelLibrary}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="3D Model & Preset Library"
-                >
-                  <FolderArchive className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Model</span>
-                </button>
-              )}
+          {/* Divider */}
+          <div className={`h-[1px] w-full ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
 
-              {/* Texture / Clay Toggle */}
-              {onToggleModelDisplayMode && (
+          {/* 4. FOOTER ROW: UNDO / SOUND / THEME / REDO */}
+          <div className="flex items-center justify-between px-0.5 pt-0.5">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              className={`p-1.5 rounded-lg transition-all ${
+                canUndo
+                  ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                  : 'text-zinc-500 opacity-40 cursor-not-allowed'
+              }`}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4 stroke-[2]" />
+            </button>
+
+            {onToggleSound && (
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+                title={soundEnabled ? 'Sound: Enabled' : 'Sound: Muted'}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="w-4 h-4 text-sky-400" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-zinc-500" />
+                )}
+              </button>
+            )}
+
+            {onToggleTheme && (
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  theme === 'light' ? 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+                title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Theme`}
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-4 h-4 text-indigo-500" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-400" />
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              className={`p-1.5 rounded-lg transition-all ${
+                canRedo
+                  ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                  : 'text-zinc-500 opacity-40 cursor-not-allowed'
+              }`}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 className="w-4 h-4 stroke-[2]" />
+            </button>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* HORIZONTAL FLYOUT SHELF 1: 3D PRIMITIVES (EXPANDS TO THE RIGHT)            */}
+          {/* ========================================================================= */}
+          {showPrimitivesMenu && (
+            <div
+              id="mody-primitives-flyout-menu"
+              className={`absolute left-full top-0 ml-2.5 w-52 p-2.5 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 flex flex-col gap-1.5 text-xs animate-in fade-in slide-in-from-left-2 duration-150 select-none ${
+                theme === 'light'
+                  ? 'bg-white/98 border-neutral-200 text-neutral-800'
+                  : 'bg-[#141519]/98 border-zinc-800 text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center justify-between px-1 pb-1.5 border-b border-zinc-800/80 text-[10px] font-mono">
+                <span className="font-semibold text-sky-400 tracking-wider">3D PRIMITIVES</span>
                 <button
                   type="button"
-                  onClick={onToggleModelDisplayMode}
-                  className={`p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                    modelDisplayMode === 'texture'
-                      ? 'bg-zinc-800 text-white border border-zinc-700'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                  onClick={() => setShowPrimitivesMenu(false)}
+                  className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1 pt-0.5">
+                {PRIMITIVE_ITEMS.map((item) => {
+                  const ItemIcon = item.icon;
+                  const isSelected = activePrimitive === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      id={`primitive-btn-${item.id}`}
+                      type="button"
+                      onClick={() => {
+                        handleSpawnPrimitive(item.id);
+                        setShowPrimitivesMenu(false);
+                      }}
+                      className={`flex items-center gap-1.5 p-1.5 rounded-lg text-left transition-all ${
+                        isSelected
+                          ? 'bg-sky-500 text-white font-bold shadow-sm'
+                          : theme === 'light'
+                          ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100'
+                          : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                      }`}
+                      title={`Spawn Primitive ${item.name}`}
+                    >
+                      <ItemIcon className="w-3.5 h-3.5 shrink-0 stroke-[1.8]" />
+                      <span className="text-[11px] truncate">{item.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* HORIZONTAL FLYOUT SHELF 2: BRUSH & STROKE SETUP (EXPANDS TO THE RIGHT)    */}
+          {/* ========================================================================= */}
+          {showBrushShelf && (
+            <div
+              id="mody-brush-shelf-flyout"
+              className={`absolute left-full top-0 ml-2.5 w-64 sm:w-72 p-3 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 flex flex-col gap-2.5 text-xs animate-in fade-in slide-in-from-left-2 duration-150 select-none ${
+                theme === 'light'
+                  ? 'bg-white/98 border-neutral-200 text-neutral-800'
+                  : 'bg-[#141519]/98 border-zinc-800 text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80">
+                <span className="font-semibold text-xs text-sky-400">Brush & Stroke Setup</span>
+                <button
+                  type="button"
+                  onClick={() => setShowBrushShelf(false)}
+                  className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* 1. Drawing Space: Surface Conformal vs 3D Free Air */}
+              <div className="space-y-1">
+                <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider block">Drawing Space</span>
+                <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${theme === 'light' ? 'bg-neutral-100 border-neutral-200' : 'bg-zinc-900 border-zinc-800'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setBrushSettings((prev) => ({ ...prev, drawingMode: 'surface' }))}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                      brushSettings.drawingMode !== 'spatial_3d'
+                        ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                        : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Shapes className="w-3.5 h-3.5" />
+                    <span>Surface</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBrushSettings((prev) => ({ ...prev, drawingMode: 'spatial_3d' }))}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                      brushSettings.drawingMode === 'spatial_3d'
+                        ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                        : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>3D Air</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Material Finishes */}
+              <div className="space-y-1">
+                <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider block">Finish Shaders</span>
+                <div className={`grid grid-cols-4 gap-1 p-1 rounded-xl border ${theme === 'light' ? 'bg-neutral-100 border-neutral-200' : 'bg-zinc-900 border-zinc-800'}`}>
+                  {[
+                    { id: 'shadeless' as MaterialType, label: 'Flat' },
+                    { id: 'shaded' as MaterialType, label: 'PBR' },
+                    { id: 'glow' as MaterialType, label: 'Glow' },
+                    { id: 'cutout' as MaterialType, label: 'Mask' },
+                  ].map((mat) => {
+                    const isSel = (brushSettings.materialType || 'shadeless') === mat.id;
+                    return (
+                      <button
+                        key={mat.id}
+                        type="button"
+                        onClick={() => setBrushSettings((prev) => ({ ...prev, materialType: mat.id }))}
+                        className={`py-1 rounded-lg text-[10px] font-medium text-center transition-all ${
+                          isSel
+                            ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                            : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900' : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {mat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Brush Size Slider & Quick Presets */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-zinc-400">
+                  <span>Brush Size</span>
+                  <span className="font-mono text-sky-400 font-bold">{displayPxSize}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.005"
+                  max="0.25"
+                  step="0.005"
+                  value={brushSettings.size}
+                  onChange={(e) => handleSizeChange(parseFloat(e.target.value))}
+                  className="w-full accent-sky-400 h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="grid grid-cols-6 gap-1 pt-1">
+                  {[0.015, 0.035, 0.065, 0.1, 0.16, 0.25].map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => handleSizeChange(sz)}
+                      className={`py-0.5 rounded text-[9.5px] font-mono border transition-all ${
+                        Math.abs(brushSettings.size - sz) < 0.01
+                          ? 'bg-sky-400 text-black font-bold border-sky-400'
+                          : theme === 'light' ? 'border-neutral-200 text-neutral-700 hover:bg-neutral-100' : 'border-zinc-800 text-zinc-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {(sz * 30).toFixed(0)}px
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Stroke Opacity Slider */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-zinc-400">
+                  <span>Opacity</span>
+                  <span className="font-mono text-sky-400 font-bold">{Math.round(brushSettings.opacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="1.0"
+                  step="0.05"
+                  value={brushSettings.opacity}
+                  onChange={(e) => handleOpacityChange(parseFloat(e.target.value))}
+                  className="w-full accent-sky-400 h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              {/* 5. Quick Color Swatches */}
+              <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                  <span>Quick Swatches</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenColorStudio) onOpenColorStudio();
+                      else setShowColorModal(true);
+                    }}
+                    className="text-sky-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>Full Studio...</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-8 gap-1">
+                  {['#000000', '#ffffff', '#38bdf8', '#818cf8', '#c084fc', '#f472b6', '#34d399', '#facc15'].map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => handleSelectColor(hex)}
+                      className={`h-5 rounded-md border transition-transform active:scale-90 ${
+                        (brushSettings.color || '').toLowerCase() === hex.toLowerCase()
+                          ? 'border-white ring-2 ring-sky-400 scale-110'
+                          : 'border-black/30 hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: hex }}
+                      title={hex}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Advanced Settings Button */}
+              {onOpenBrushSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBrushShelf(false);
+                    onOpenBrushSettings();
+                  }}
+                  className={`w-full py-1.5 rounded-xl border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                    theme === 'light' ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800' : 'bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200'
                   }`}
-                  title={`Surface Mode: ${modelDisplayMode === 'texture' ? 'Textured (Click for Clay)' : 'Clay White (Click for Textured)'}`}
                 >
-                  <Palette className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">{modelDisplayMode === 'texture' ? 'Texture' : 'Clay'}</span>
-                </button>
-              )}
-
-              {/* Clone Model */}
-              {onCloneModel && (
-                <button
-                  type="button"
-                  onClick={onCloneModel}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Clone 3D Model"
-                >
-                  <Copy className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Clone</span>
-                </button>
-              )}
-
-              {/* Hide / Show 3D Model */}
-              {onToggleModelVisibility && (
-                <button
-                  type="button"
-                  onClick={onToggleModelVisibility}
-                  className={`p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                    !isModelVisible
-                      ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
-                  title={isModelVisible ? 'Hide 3D Model' : 'Show 3D Model'}
-                >
-                  {isModelVisible ? (
-                    <Eye className="w-3.5 h-3.5 stroke-[1.8]" />
-                  ) : (
-                    <EyeOff className="w-3.5 h-3.5 stroke-[1.8] text-zinc-500" />
-                  )}
-                  <span className="text-[8px] font-mono">{isModelVisible ? 'Show' : 'Hide'}</span>
-                </button>
-              )}
-
-              {/* Skybox & Atmosphere Studio */}
-              {onOpenIllumination && (
-                <button
-                  type="button"
-                  onClick={onOpenIllumination}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Skybox, Lighting & Weather Studio"
-                >
-                  <Sun className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Skybox</span>
-                </button>
-              )}
-
-              {/* Grid Toggle */}
-              {onToggleGrid && (
-                <button
-                  type="button"
-                  onClick={onToggleGrid}
-                  className={`p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                    showGrid
-                      ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                      : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                  }`}
-                  title={`Ground Grid: ${showGrid ? 'Visible' : 'Hidden'}`}
-                >
-                  <Grid3x3 className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Grid</span>
-                </button>
-              )}
-
-              {/* Drawings Layers Panel */}
-              {onOpenLayers && (
-                <button
-                  type="button"
-                  onClick={onOpenLayers}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Drawings & Hierarchy Layers Panel"
-                >
-                  <Layers className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Layers</span>
-                </button>
-              )}
-
-              {/* Drawing Plane Toggle */}
-              {onTogglePlane && (
-                <button
-                  type="button"
-                  onClick={onTogglePlane}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Toggle Construction Drawing Plane"
-                >
-                  <Maximize2 className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Plane</span>
-                </button>
-              )}
-
-              {/* Reset Camera */}
-              {onResetCamera && (
-                <button
-                  type="button"
-                  onClick={onResetCamera}
-                  className="p-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Reset Camera Framing"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 stroke-[1.8]" />
-                  <span className="text-[8px] font-mono">Reset</span>
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>Advanced Dynamics & Curves...</span>
                 </button>
               )}
             </div>
+          )}
 
-            {/* More Menu Dropdown Button */}
-            <div className="relative">
+          {/* ========================================================================= */}
+          {/* HORIZONTAL FLYOUT SHELF 3: SCENE & STUDIO ACTIONS (EXPANDS TO THE RIGHT)   */}
+          {/* ========================================================================= */}
+          {showSceneShelf && (
+            <div
+              id="mody-scene-shelf-flyout"
+              className={`absolute left-full top-0 ml-2.5 w-64 sm:w-72 p-3 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 flex flex-col gap-2.5 text-xs animate-in fade-in slide-in-from-left-2 duration-150 select-none ${
+                theme === 'light'
+                  ? 'bg-white/98 border-neutral-200 text-neutral-800'
+                  : 'bg-[#141519]/98 border-zinc-800 text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80">
+                <span className="font-semibold text-xs text-purple-400">Scene & Studio Actions</span>
+                <button
+                  type="button"
+                  onClick={() => setShowSceneShelf(false)}
+                  className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* 3x3 Scene Grid */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {onOpenModelLibrary && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenModelLibrary();
+                      setShowSceneShelf(false);
+                    }}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Model Library"
+                  >
+                    <FolderArchive className="w-4 h-4 text-purple-400" />
+                    <span className="text-[9.5px]">Models</span>
+                  </button>
+                )}
+
+                {onToggleModelDisplayMode && (
+                  <button
+                    type="button"
+                    onClick={onToggleModelDisplayMode}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      modelDisplayMode === 'texture'
+                        ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-zinc-800 border-zinc-700 text-white'
+                        : theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Texture / Clay Surface"
+                  >
+                    <Palette className="w-4 h-4 text-sky-400" />
+                    <span className="text-[9.5px]">{modelDisplayMode === 'texture' ? 'Texture' : 'Clay'}</span>
+                  </button>
+                )}
+
+                {onCloneModel && (
+                  <button
+                    type="button"
+                    onClick={onCloneModel}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Clone Active 3D Model"
+                  >
+                    <Copy className="w-4 h-4 text-emerald-400" />
+                    <span className="text-[9.5px]">Clone</span>
+                  </button>
+                )}
+
+                {onToggleModelVisibility && (
+                  <button
+                    type="button"
+                    onClick={onToggleModelVisibility}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      !isModelVisible
+                        ? theme === 'light' ? 'bg-neutral-200 border-neutral-300 text-neutral-600' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                        : theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Hide/Show 3D Model"
+                  >
+                    {isModelVisible ? <Eye className="w-4 h-4 text-amber-400" /> : <EyeOff className="w-4 h-4 text-zinc-500" />}
+                    <span className="text-[9.5px]">{isModelVisible ? 'Show' : 'Hide'}</span>
+                  </button>
+                )}
+
+                {onOpenIllumination && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenIllumination();
+                      setShowSceneShelf(false);
+                    }}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Skybox & Atmosphere"
+                  >
+                    <Sun className="w-4 h-4 text-amber-400" />
+                    <span className="text-[9.5px]">Skybox</span>
+                  </button>
+                )}
+
+                {onToggleGrid && (
+                  <button
+                    type="button"
+                    onClick={onToggleGrid}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      showGrid
+                        ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-zinc-800 border-zinc-700 text-white font-bold'
+                        : theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Ground Grid"
+                  >
+                    <Grid3x3 className="w-4 h-4 text-sky-400" />
+                    <span className="text-[9.5px]">Grid</span>
+                  </button>
+                )}
+
+                {onOpenLayers && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenLayers();
+                      setShowSceneShelf(false);
+                    }}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Layers Panel"
+                  >
+                    <Layers className="w-4 h-4 text-indigo-400" />
+                    <span className="text-[9.5px]">Layers</span>
+                  </button>
+                )}
+
+                {onTogglePlane && (
+                  <button
+                    type="button"
+                    onClick={onTogglePlane}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Drawing Plane"
+                  >
+                    <Maximize2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-[9.5px]">Plane</span>
+                  </button>
+                )}
+
+                {onResetCamera && (
+                  <button
+                    type="button"
+                    onClick={onResetCamera}
+                    className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                      theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                    }`}
+                    title="Reset Camera"
+                  >
+                    <RotateCcw className="w-4 h-4 text-rose-400" />
+                    <span className="text-[9.5px]">Reset</span>
+                  </button>
+                )}
+
+                {/* Fullscreen Toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleFullscreen()}
+                  className={`p-2 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors border ${
+                    isBrowserFs
+                      ? theme === 'light' ? 'bg-sky-500 text-white border-sky-600 font-bold' : 'bg-sky-600/30 border-sky-500/60 text-sky-200 font-bold'
+                      : theme === 'light' ? 'border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800' : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200'
+                  }`}
+                  title={isBrowserFs ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+                >
+                  {isBrowserFs ? <Minimize className="w-4 h-4 text-amber-400" /> : <Maximize className="w-4 h-4 text-sky-400" />}
+                  <span className="text-[9.5px]">{isBrowserFs ? 'Exit FS' : 'Fullscreen'}</span>
+                </button>
+              </div>
+
+              {/* Save & Load Project File Buttons */}
+              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-zinc-800/80">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSaveProject) onSaveProject();
+                    setShowSceneShelf(false);
+                  }}
+                  className={`py-1.5 px-2 rounded-xl border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                    theme === 'light'
+                      ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800'
+                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+                  }`}
+                  title="Save Project (.remix3d file)"
+                >
+                  <Save className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Save Project</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadFileInputRef.current?.click();
+                    setShowSceneShelf(false);
+                  }}
+                  className={`py-1.5 px-2 rounded-xl border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                    theme === 'light'
+                      ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800'
+                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+                  }`}
+                  title="Load Project (.remix3d file)"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Load Project</span>
+                </button>
+              </div>
+
+              {/* More Tools Dropdown Trigger */}
               <button
                 type="button"
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
-                className={`w-full py-1 px-2 rounded-lg border text-[10px] font-medium flex items-center justify-between transition-all ${
+                className={`w-full py-1.5 px-2.5 rounded-xl border text-[11px] font-medium flex items-center justify-between transition-all ${
                   showMoreMenu
-                    ? 'bg-zinc-800 border-zinc-700 text-white'
-                    : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+                    ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                    : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
                 }`}
-                title="More Studio Tools & Export"
               >
                 <div className="flex items-center gap-1.5">
-                  <MoreHorizontal className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>More Tools</span>
+                  <MoreHorizontal className="w-4 h-4 text-purple-400" />
+                  <span>Additional Studio Tools</span>
                 </div>
-                <span className="text-[8px] font-mono text-zinc-500">...</span>
+                <span className="text-[9px] font-mono text-zinc-500">{showMoreMenu ? '▲' : '▼'}</span>
               </button>
 
-              {/* More Tools Popover Modal/Dropdown */}
+              {/* Additional Tools Extended List */}
               {showMoreMenu && (
-                <div className="absolute left-full ml-2 bottom-0 w-56 p-1.5 rounded-2xl bg-[#141519]/98 backdrop-blur-2xl border border-zinc-800 shadow-2xl z-50 flex flex-col gap-0.5 text-xs animate-in fade-in zoom-in-95 select-none">
+                <div className="flex flex-col gap-1 p-1 rounded-xl bg-black/40 border border-zinc-800/80 max-h-48 overflow-y-auto">
                   {onOpenExport && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenExport();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Download className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>Export GLTF / Textures</span>
+                      <span>Export 3D / Textures</span>
                     </button>
                   )}
-
                   {onOpenRenderSettings && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenRenderSettings();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>Post-Processing & Shaders</span>
+                      <span>Post-Processing Shaders</span>
                     </button>
                   )}
-
                   {onOpenLiquify && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenLiquify();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Wand2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                       <span>Volumetric Liquify</span>
                     </button>
                   )}
-
                   {onOpenDecimate && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenDecimate();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Scissors className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>Curve Decimation (RDP)</span>
+                      <span>RDP Curve Decimator</span>
                     </button>
                   )}
-
                   {onOpenScaffolding && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenScaffolding();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Shield className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>3D Collision Scaffolding</span>
+                      <span>Collision Scaffolding</span>
                     </button>
                   )}
-
                   {onOpenClipboard && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenClipboard();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Clipboard className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>2D Reference Clipboard</span>
+                      <span>Reference Moodboard</span>
                     </button>
                   )}
-
                   {onOpenBentGuide && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenBentGuide();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Spline className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                       <span>Bent Manifold Guides</span>
                     </button>
                   )}
-
                   {onOpenCustomMirror && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenCustomMirror();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Maximize2 className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                       <span>Arbitrary Mirror Plane</span>
                     </button>
                   )}
-
-                  {onOpenRaycastSettings && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenRaycastSettings();
-                        setShowMoreMenu(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                      <span>Surface Snapping & Raycast</span>
-                    </button>
-                  )}
-
                   {onOpenARViewer && (
                     <button
                       type="button"
                       onClick={() => {
                         onOpenARViewer();
-                        setShowMoreMenu(false);
+                        setShowSceneShelf(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-zinc-200 hover:text-white hover:bg-white/10 transition-colors text-[11px]"
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[10.5px] hover:bg-white/10 text-zinc-300 hover:text-white"
                     >
                       <Glasses className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                       <span>WebXR AR Spatial View</span>
@@ -1398,236 +1635,185 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* 8. VIEWPORT & INPUT MODES */}
-          <div className="flex flex-col gap-1 pt-1 border-t border-zinc-800">
-            <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider px-0.5">Viewport & Input</span>
-
-            {/* Stylus Detection Active Badge */}
-            {isStylusDetected && (
-              <div className="w-full py-1 px-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 flex items-center justify-between text-[10px] font-medium">
-                <div className="flex items-center gap-1">
-                  <PenTool className="w-3 h-3 text-zinc-300 shrink-0" />
-                  <span>Stylus Pen</span>
-                </div>
-                <span className="text-[8px] font-mono bg-white text-zinc-950 px-1 rounded font-bold">Active</span>
+          {/* ========================================================================= */}
+          {/* HORIZONTAL FLYOUT SHELF 4: VIEWPORT & SETTINGS (EXPANDS TO THE RIGHT)      */}
+          {/* ========================================================================= */}
+          {showSettingsShelf && (
+            <div
+              id="mody-settings-shelf-flyout"
+              className={`absolute left-full top-0 ml-2.5 w-60 sm:w-64 p-3 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 flex flex-col gap-2.5 text-xs animate-in fade-in slide-in-from-left-2 duration-150 select-none ${
+                theme === 'light'
+                  ? 'bg-white/98 border-neutral-200 text-neutral-800'
+                  : 'bg-[#141519]/98 border-zinc-800 text-zinc-200'
+              }`}
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80">
+                <span className="font-semibold text-xs text-emerald-400">Viewport & Hardware</span>
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsShelf(false)}
+                  className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
-            )}
 
-            {/* Projection Mode Toggle */}
-            {onToggleProjection && (
-              <button
-                type="button"
-                onClick={onToggleProjection}
-                className="w-full py-1 px-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white flex items-center justify-between text-[10px] font-medium transition-all"
-                title="Toggle Perspective / Orthographic Projection"
-              >
-                <div className="flex items-center gap-1">
-                  <Box className="w-3 h-3 text-zinc-400 shrink-0" />
-                  <span>{projectionMode === 'orthographic' ? 'Ortho View' : 'Perspective'}</span>
+              {/* Stylus Status */}
+              {isStylusDetected && (
+                <div className="py-1 px-2 rounded-xl bg-sky-950/40 border border-sky-500/30 flex items-center justify-between text-[10.5px]">
+                  <div className="flex items-center gap-1.5 text-sky-300">
+                    <PenTool className="w-3.5 h-3.5" />
+                    <span>Stylus Hardware</span>
+                  </div>
+                  <span className="text-[8px] font-mono bg-sky-400 text-black px-1.5 py-0.2 rounded font-bold">Active</span>
                 </div>
-              </button>
-            )}
+              )}
 
-            {/* Finger Draw / Finger Lock Accessibility Toggle */}
-            {onToggleFingerPenMode && (
-              <button
-                type="button"
-                onClick={() => onToggleFingerPenMode(!fingerPenMode)}
-                className={`w-full py-1 px-1.5 rounded-lg border text-[10px] font-medium flex items-center justify-between transition-all ${
-                  fingerPenMode
-                    ? 'bg-zinc-800 border-zinc-600 text-white shadow-sm font-semibold'
-                    : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-                title={
-                  fingerPenMode
-                    ? 'Finger-Pen Mode ON: 1-finger touch draws on model (Stylus simulated for touchscreens)'
-                    : 'Strict Segregation ON: Stylus strictly draws, 1-finger touch strictly orbits/pans'
-                }
-              >
-                <div className="flex items-center gap-1">
-                  <Touchpad className="w-3 h-3 shrink-0 text-zinc-400" />
-                  <span>{fingerPenMode ? 'Finger Draw' : 'Finger Lock'}</span>
-                </div>
-                <span className={`text-[8px] font-mono px-1 py-0.2 rounded ${fingerPenMode ? 'bg-white text-zinc-950 font-bold' : 'bg-zinc-800 text-zinc-500'}`}>
-                  {fingerPenMode ? 'ON' : 'OFF'}
-                </span>
-              </button>
-            )}
+              {/* Projection Toggle */}
+              {onToggleProjection && (
+                <button
+                  type="button"
+                  onClick={onToggleProjection}
+                  className={`w-full py-1.5 px-2 rounded-xl border flex items-center justify-between text-[10.5px] font-medium transition-all ${
+                    theme === 'light'
+                      ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-800'
+                      : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Box className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Camera Projection</span>
+                  </div>
+                  <span className="text-[9px] font-mono capitalize">{projectionMode}</span>
+                </button>
+              )}
 
-            {/* Right-Click Radial Menu Toggle */}
-            {onToggleDisableContextMenu && (
-              <button
-                type="button"
-                onClick={() => onToggleDisableContextMenu()}
-                className={`w-full py-1 px-1.5 rounded-lg border text-[10px] font-medium flex items-center justify-between transition-all ${
-                  !disableContextMenu
-                    ? 'bg-zinc-800 border-zinc-600 text-white shadow-sm font-semibold'
-                    : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-white'
-                }`}
-                title={
-                  disableContextMenu
-                    ? 'Right-Click Radial Menu: OFF (Click to turn ON)'
-                    : 'Right-Click Radial Menu: ON (Click to turn OFF for desktop orbit)'
-                }
-              >
-                <div className="flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3 shrink-0 text-zinc-400" />
-                  <span>Radial Menu</span>
-                </div>
-                <span className={`text-[8px] font-mono px-1 py-0.2 rounded font-bold ${!disableContextMenu ? 'bg-white text-zinc-950' : 'bg-zinc-800 text-zinc-500'}`}>
-                  {!disableContextMenu ? 'ON' : 'OFF'}
-                </span>
-              </button>
-            )}
-
-            {/* 3D Navigator Controller Switcher (Card Dial vs Circular Tactile Wheel) */}
-            {onChangeController && (
-              <div className="flex flex-col gap-1 pt-1 border-t border-zinc-800/60">
-                <div className="flex items-center justify-between px-0.5">
-                  <span className="text-[8px] font-mono text-zinc-500 uppercase">3D Controller</span>
-                  <button
-                    type="button"
-                    onClick={() => onChangeController(activeController === 'hidden' ? 'both' : 'hidden')}
-                    className="text-[8px] font-mono text-zinc-500 hover:text-zinc-300"
-                  >
-                    {activeController === 'hidden' ? 'Show' : 'Hide'}
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeController === 'navigator') onChangeController('hidden');
-                      else if (activeController === 'both') onChangeController('tactile');
-                      else if (activeController === 'tactile') onChangeController('both');
-                      else onChangeController('navigator');
-                    }}
-                    className={`py-1 px-1 rounded-md text-[9px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      activeController === 'navigator' || activeController === 'both'
-                        ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                    title="Toggle Rectangular Transform Card Dial"
-                  >
-                    <Compass className="w-3 h-3 stroke-[2]" />
-                    <span>Card</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeController === 'tactile') onChangeController('hidden');
-                      else if (activeController === 'both') onChangeController('navigator');
-                      else if (activeController === 'navigator') onChangeController('both');
-                      else onChangeController('tactile');
-                    }}
-                    className={`py-1 px-1 rounded-md text-[9px] font-medium flex items-center justify-center gap-1 transition-all ${
-                      activeController === 'tactile' || activeController === 'both'
-                        ? 'bg-white text-zinc-950 font-bold shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                    title="Toggle Circular Tactile Spatial Wheel"
-                  >
-                    <Disc className="w-3 h-3 stroke-[2]" />
-                    <span>Circular</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Global UI Scale Setting */}
-            {onUiScaleChange && (
-              <div className="flex flex-col gap-1 pt-1 border-t border-zinc-800/60">
-                <div className="flex items-center justify-between px-0.5">
-                  <span className="text-[8px] font-mono text-zinc-500 uppercase">UI Scale</span>
-                  <span className="text-[9px] font-mono font-bold text-zinc-200">
-                    {Math.round((uiScale || 1.0) * 100)}%
+              {/* Finger Draw Toggle */}
+              {onToggleFingerPenMode && (
+                <button
+                  type="button"
+                  onClick={() => onToggleFingerPenMode(!fingerPenMode)}
+                  className={`w-full py-1.5 px-2 rounded-xl border text-[10.5px] font-medium flex items-center justify-between transition-all ${
+                    fingerPenMode
+                      ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white font-semibold' : 'bg-zinc-800 border-zinc-600 text-white shadow-sm font-semibold'
+                      : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Touchpad className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Finger Touch Draw</span>
+                  </div>
+                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${fingerPenMode ? 'bg-sky-400 text-black' : 'bg-neutral-700 text-neutral-300'}`}>
+                    {fingerPenMode ? 'ON' : 'OFF'}
                   </span>
+                </button>
+              )}
+
+              {/* Radial Menu Toggle */}
+              {onToggleDisableContextMenu && (
+                <button
+                  type="button"
+                  onClick={() => onToggleDisableContextMenu()}
+                  className={`w-full py-1.5 px-2 rounded-xl border text-[10.5px] font-medium flex items-center justify-between transition-all ${
+                    !disableContextMenu
+                      ? theme === 'light' ? 'bg-neutral-900 border-neutral-800 text-white font-semibold' : 'bg-zinc-800 border-zinc-600 text-white shadow-sm font-semibold'
+                      : theme === 'light' ? 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-700' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Radial Menu</span>
+                  </div>
+                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${!disableContextMenu ? 'bg-sky-400 text-black' : 'bg-neutral-700 text-neutral-300'}`}>
+                    {!disableContextMenu ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              )}
+
+              {/* 3D Navigator Controller Mode */}
+              {onChangeController && (
+                <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 uppercase">
+                    <span>3D Controller</span>
+                    <button
+                      type="button"
+                      onClick={() => onChangeController(activeController === 'hidden' ? 'both' : 'hidden')}
+                      className="text-sky-400 hover:underline"
+                    >
+                      {activeController === 'hidden' ? 'Show' : 'Hide'}
+                    </button>
+                  </div>
+                  <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${theme === 'light' ? 'bg-neutral-100 border-neutral-200' : 'bg-zinc-900 border-zinc-800'}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeController === 'navigator') onChangeController('hidden');
+                        else onChangeController('navigator');
+                      }}
+                      className={`py-1 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                        activeController === 'navigator' || activeController === 'both'
+                          ? 'bg-sky-400 text-black font-bold'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Compass className="w-3.5 h-3.5" />
+                      <span>Card</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (activeController === 'tactile') onChangeController('hidden');
+                        else onChangeController('tactile');
+                      }}
+                      className={`py-1 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1 transition-all ${
+                        activeController === 'tactile' || activeController === 'both'
+                          ? 'bg-sky-400 text-black font-bold'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Disc className="w-3.5 h-3.5" />
+                      <span>Circular</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onUiScaleChange((uiScale || 1.0) - 0.1)}
-                    className="flex-1 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-[11px] font-bold"
-                    title="Decrease UI Scale (-10%)"
-                  >
-                    -
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const presets = [0.8, 0.9, 1.0, 1.15, 1.3, 1.5];
-                      const current = uiScale || 1.0;
-                      const idx = presets.findIndex((s) => Math.abs(s - current) < 0.05);
-                      const next = presets[(idx + 1) % presets.length];
-                      onUiScaleChange(next);
-                    }}
-                    className="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[9px] font-mono text-zinc-300 hover:text-white"
-                    title="Cycle Scale Presets (80%, 90%, 100%, 115%, 130%, 150%)"
-                  >
-                    Reset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onUiScaleChange((uiScale || 1.0) + 0.1)}
-                    className="flex-1 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-[11px] font-bold"
-                    title="Increase UI Scale (+10%)"
-                  >
-                    +
-                  </button>
+              )}
+
+              {/* Global UI Scale */}
+              {onUiScaleChange && (
+                <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400">
+                    <span>UI SCALE</span>
+                    <span className="text-white font-bold">{Math.round((uiScale || 1.0) * 100)}%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onUiScaleChange((uiScale || 1.0) - 0.1)}
+                      className="flex-1 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-bold"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUiScaleChange(1.0)}
+                      className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white text-[9.5px] font-mono"
+                    >
+                      100%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onUiScaleChange((uiScale || 1.0) + 0.1)}
+                      className="flex-1 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* 9. FOOTER: UNDO / SOUND / REDO (SOUND IN EXPANDED MENU PER REQ 3) */}
-          <div className="flex items-center justify-between px-1 pt-1 border-t border-zinc-800">
-            <button
-              type="button"
-              onClick={onUndo}
-              disabled={!canUndo}
-              className={`p-1 rounded-lg transition-all ${
-                canUndo ? 'text-zinc-300 hover:text-white hover:bg-white/10' : 'text-zinc-600 opacity-40 cursor-not-allowed'
-              }`}
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5 stroke-[2]" />
-            </button>
-
-            {onToggleSound && (
-              <button
-                type="button"
-                onClick={onToggleSound}
-                className={`p-1 px-1.5 rounded-lg text-[10px] font-medium flex items-center gap-1 transition-all ${
-                  soundEnabled
-                    ? 'text-white bg-white/10 border border-white/20'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5 border border-transparent'
-                }`}
-                title={soundEnabled ? 'Haptic Sound Effects: Enabled (Click to mute)' : 'Haptic Sound Effects: Muted (Click to enable)'}
-              >
-                {soundEnabled ? (
-                  <Volume2 className="w-3.5 h-3.5 text-zinc-200" />
-                ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
-                )}
-                <span className="font-mono text-[9px]">{soundEnabled ? 'Sound' : 'Mute'}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onRedo}
-              disabled={!canRedo}
-              className={`p-1 rounded-lg transition-all ${
-                canRedo ? 'text-zinc-300 hover:text-white hover:bg-white/10' : 'text-zinc-600 opacity-40 cursor-not-allowed'
-              }`}
-              title="Redo (Ctrl+Y)"
-            >
-              <Redo2 className="w-3.5 h-3.5 stroke-[2]" />
-            </button>
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1641,7 +1827,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         setBrushSettings={setBrushSettings}
         tool={tool}
         setTool={setTool}
-        theme="dark"
+        theme={theme}
       />
 
       {/* ---------------------------------------------------- */}
@@ -1658,7 +1844,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           setShowPaintPickerModal(false);
           setShowColorModal(true);
         }}
-        theme="dark"
+        theme={theme}
       />
 
       {/* ---------------------------------------------------- */}
@@ -1676,110 +1862,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         onSampleFromScreen={() => {
           setTool('paint_picker');
         }}
-        theme="dark"
+        theme={theme}
       />
-
-      {/* ---------------------------------------------------- */}
-      {/* BRUSH SIZE POPOVER                                   */}
-      {/* ---------------------------------------------------- */}
-      {showSizePopup && (
-        <div
-          id="toolbar-brush-size-popover"
-          className="absolute left-full ml-2 top-10 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none"
-        >
-          <div className="flex justify-between items-center font-semibold pb-1 border-b border-[#282a32]">
-            <span className="text-xs text-white">Brush Size</span>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-neutral-400">{displayPxSize}</span>
-              <button
-                type="button"
-                onClick={() => setShowSizePopup(false)}
-                className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
-                title="Close"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-          <input
-            type="range"
-            min="0.01"
-            max="0.25"
-            step="0.005"
-            value={brushSettings.size}
-            onChange={(e) => handleSizeChange(parseFloat(e.target.value))}
-            className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white"
-          />
-          {/* Quick presets for mobile touch */}
-          <div className="flex items-center justify-between gap-1 pt-1 border-t border-[#282a32]">
-            {[0.02, 0.05, 0.1, 0.2].map((sz) => (
-              <button
-                key={sz}
-                type="button"
-                onClick={() => handleSizeChange(sz)}
-                className={`flex-1 py-1 rounded text-[10px] font-mono transition-colors ${
-                  Math.abs(brushSettings.size - sz) < 0.01
-                    ? 'bg-white text-black font-bold'
-                    : 'bg-[#22242c] text-neutral-300 hover:bg-[#2c2e38]'
-                }`}
-              >
-                {(sz * 30).toFixed(0)}px
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ---------------------------------------------------- */}
-      {/* BRUSH OPACITY POPOVER                                */}
-      {/* ---------------------------------------------------- */}
-      {showOpacityPopup && (
-        <div
-          id="toolbar-brush-opacity-popover"
-          className="absolute left-full ml-2 top-24 p-3 rounded-xl bg-[#18191d]/95 backdrop-blur-xl border border-[#2b2c32] shadow-2xl z-50 flex flex-col gap-2 w-48 text-xs animate-in fade-in zoom-in-95 select-none"
-        >
-          <div className="flex justify-between items-center font-semibold pb-1 border-b border-[#282a32]">
-            <span className="text-xs text-white">Opacity</span>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono text-neutral-400">{Math.round(brushSettings.opacity * 100)}%</span>
-              <button
-                type="button"
-                onClick={() => setShowOpacityPopup(false)}
-                className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
-                title="Close"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-          <input
-            type="range"
-            min="0.05"
-            max="1.0"
-            step="0.05"
-            value={brushSettings.opacity}
-            onChange={(e) => handleOpacityChange(parseFloat(e.target.value))}
-            className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white"
-          />
-          {/* Quick presets for mobile touch */}
-          <div className="flex items-center justify-between gap-1 pt-1 border-t border-[#282a32]">
-            {[0.25, 0.5, 0.75, 1.0].map((op) => (
-              <button
-                key={op}
-                type="button"
-                onClick={() => handleOpacityChange(op)}
-                className={`flex-1 py-1 rounded text-[10px] font-mono transition-colors ${
-                  Math.abs(brushSettings.opacity - op) < 0.05
-                    ? 'bg-white text-black font-bold'
-                    : 'bg-[#22242c] text-neutral-300 hover:bg-[#2c2e38]'
-                }`}
-              >
-                {Math.round(op * 100)}%
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

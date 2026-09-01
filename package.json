@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev:s6lite": "node scripts/server-s6lite.mjs",
+    "dev:s25ultra": "node scripts/server-s25ultra.mjs",
+    "dev:both": "node scripts/server-both.mjs",
     "dev:mobile": "node scripts/mobile-server.mjs",
     "dev:https": "node scripts/mobile-server.mjs --https",
-    "start": "node scripts/mobile-server.mjs",
+    "start": "node scripts/server-both.mjs",
     "build": "vite build",
     "preview": "vite preview --host=0.0.0.0",
     "clean": "rm -rf dist server.js",

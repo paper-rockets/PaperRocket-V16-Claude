@@ -64,6 +64,8 @@ export interface PaperRocketTactileWheelProps {
   onCopy?: () => void;
   onPaste?: () => void;
   clipboardCount?: number;
+  sensitivity?: number;
+  onSensitivityChange?: (s: number) => void;
 }
 
 export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
@@ -96,6 +98,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   onCopy,
   onPaste,
   clipboardCount = 0,
+  sensitivity = 0.5,
+  onSensitivityChange,
 }) => {
   // Mode state with internal fallback
   const [internalMode, setInternalMode] = useState<SpatialMode>('3d');
@@ -954,6 +958,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         tabs={[
           { id: '2d', label: 'Flat Screen' },
           { id: '3d', label: '3D World' },
+          { id: 'tactile_ball', label: 'Tactile Ball' },
         ]}
         isLocked={isLocked}
         onLockToggle={handleLockToggle}
@@ -975,6 +980,11 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         onCopy={onCopy}
         onPaste={onPaste}
         clipboardCount={clipboardCount}
+        sensitivity={sensitivity}
+        onSensitivityChange={(s) => {
+          onSensitivityChange?.(s);
+          if (engine) engine.setNavigatorSensitivity(s);
+        }}
       />
 
       {/* Main Paper Rocket-Inspired Tactile Circular Disc Body */}
@@ -1052,7 +1062,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             setSubMode(subMode === 'ball' ? 'joystick' : 'ball');
           }}
           className={`absolute right-3 z-30 w-6 h-11 rounded-full border flex items-center justify-center transition-all ${
-            subMode === 'ball'
+            subMode === 'ball' || mode === 'tactile_ball'
               ? 'bg-white text-neutral-950 border-white shadow-[0_0_12px_rgba(255,255,255,0.6)]'
               : 'bg-neutral-800/80 text-neutral-400 border-neutral-700/60 hover:text-white'
           }`}
@@ -1083,7 +1093,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         {/* ---------------------------------------------------- */}
 
         {/* MODE 1: ELASTIC JOYSTICK & 3-AXIS PETALS */}
-        {subMode === 'joystick' && (
+        {subMode === 'joystick' && mode !== 'tactile_ball' && (
           <div
             ref={joystickContainerRef}
             id="paper-rocket-joystick-core"
@@ -1166,7 +1176,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         )}
 
         {/* MODE 2: ROLLING 3D TOY SPHERE (Real Three.js WebGPU/WebGL 3D Sphere Trackball) */}
-        {subMode === 'ball' && (
+        {(subMode === 'ball' || mode === 'tactile_ball') && (
           <div
             id="paper-rocket-trackball-sphere"
             className={`relative ${

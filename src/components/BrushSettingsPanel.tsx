@@ -28,6 +28,7 @@ interface BrushSettingsPanelProps {
   onRecalculateNormals?: () => number | void;
   onOpenRaycastSettings?: () => void;
   onOpenColorStudio?: () => void;
+  theme?: 'light' | 'dark';
 }
 
 const QUICK_COLORS = [
@@ -42,6 +43,7 @@ export const BrushSettingsPanel: React.FC<BrushSettingsPanelProps> = ({
   onRecalculateNormals,
   onOpenRaycastSettings,
   onOpenColorStudio,
+  theme = 'dark',
 }) => {
   const [recalcFeedback, setRecalcFeedback] = useState<string | null>(null);
 
@@ -99,28 +101,31 @@ export const BrushSettingsPanel: React.FC<BrushSettingsPanelProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-end p-3 sm:p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+      id="brush-settings-panel"
+      className={`fixed top-14 left-14 sm:left-[210px] z-50 w-[310px] sm:w-[330px] max-h-[calc(100vh-80px)] flex flex-col rounded-2xl shadow-2xl select-none overflow-hidden font-sans border transition-all animate-in fade-in zoom-in-95 duration-150 ${
+        theme === 'light'
+          ? 'bg-white/98 text-neutral-800 border-neutral-200 shadow-neutral-400/30'
+          : 'bg-[#141519]/98 text-zinc-200 border-zinc-800 backdrop-blur-2xl shadow-black/80'
+      }`}
     >
-      <div
-        id="brush-settings-panel"
-        onClick={(e) => e.stopPropagation()}
-        className="w-full sm:w-[420px] max-h-[92vh] flex flex-col rounded-2xl bg-[#141519]/98 backdrop-blur-2xl border border-zinc-800 shadow-2xl z-50 select-none animate-in slide-in-from-right duration-200 overflow-hidden text-zinc-200 font-sans"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 bg-[#101115]">
-          <div className="flex items-center gap-2.5 text-zinc-100 font-semibold text-sm">
-            <Sliders className="w-4 h-4 text-zinc-400" />
-            <span>Brush Dynamics & Surface</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      {/* Header */}
+      <div className={`flex items-center justify-between px-4 py-3 border-b ${
+        theme === 'light' ? 'border-neutral-200 bg-neutral-50' : 'border-zinc-800 bg-[#101115]'
+      }`}>
+        <div className="flex items-center gap-2 font-semibold text-xs sm:text-sm">
+          <Sliders className={`w-4 h-4 ${theme === 'light' ? 'text-neutral-600' : 'text-zinc-400'}`} />
+          <span>Brush Dynamics & Surface</span>
         </div>
+        <button
+          onClick={onClose}
+          className={`p-1.5 rounded-lg transition-colors ${
+            theme === 'light' ? 'hover:bg-neutral-200 text-neutral-500' : 'hover:bg-white/10 text-zinc-400 hover:text-white'
+          }`}
+          title="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
         {/* Scrollable Content Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs">
@@ -572,9 +577,8 @@ export const BrushSettingsPanel: React.FC<BrushSettingsPanelProps> = ({
             })}
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
-  );
-};
+      </div>,
+      document.body
+    );
+  };
 

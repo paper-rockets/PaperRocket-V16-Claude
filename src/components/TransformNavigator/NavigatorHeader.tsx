@@ -12,6 +12,7 @@ import {
   Box,
   Check,
   Shapes,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { TransformMode, AccessibilityMode, Layer, LoadedModelInfo, TransformTargetScope } from '../../types';
 import { haptics } from '../../utils/haptics';
@@ -49,6 +50,8 @@ export interface NavigatorHeaderProps {
   scaleFactor?: number;
   onScaleCycle?: () => void;
   onScaleSet?: (scale: number) => void;
+  sensitivity?: number;
+  onSensitivityChange?: (s: number) => void;
 }
 
 const DEFAULT_TABS: NavigatorTabItem[] = [
@@ -78,11 +81,14 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
   onCopy,
   onPaste,
   clipboardCount = 0,
+  sensitivity = 0.5,
+  onSensitivityChange,
 }) => {
   const [hapticsEnabled, setHapticsEnabled] = useState(haptics.getEnabled());
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [pasteFeedback, setPasteFeedback] = useState(false);
   const [showTargetDropdown, setShowTargetDropdown] = useState(false);
+  const [showSensitivityPopover, setShowSensitivityPopover] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -405,6 +411,48 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               <ClipboardPaste className="w-3.5 h-3.5" />
             </button>
+
+            {/* Sensitivity Slider Popover Toggle */}
+            <div className="relative">
+              <button
+                id="navigator-btn-sensitivity"
+                type="button"
+                onClick={() => setShowSensitivityPopover(!showSensitivityPopover)}
+                title={`Navigator Sensitivity: ${sensitivity.toFixed(2)}x (Click to adjust)`}
+                aria-label="Adjust navigator sensitivity"
+                className={`p-1.5 rounded-lg text-xs transition-all duration-150 flex items-center justify-center ${
+                  showSensitivityPopover
+                    ? 'bg-sky-500 text-black font-bold'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+
+              {showSensitivityPopover && (
+                <div className="absolute right-0 top-full mt-2 w-48 p-2.5 rounded-2xl bg-[#14151a]/98 backdrop-blur-2xl border border-white/15 shadow-[0_20px_45px_rgba(0,0,0,0.85)] z-50 text-xs text-white flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-300">
+                    <span className="font-bold">SENSITIVITY</span>
+                    <span className="text-sky-400 font-bold">{sensitivity.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="2.0"
+                    step="0.05"
+                    value={sensitivity}
+                    onChange={(e) => onSensitivityChange?.(parseFloat(e.target.value))}
+                    className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                  />
+                  <div className="flex items-center justify-between text-[8.5px] font-mono text-zinc-500">
+                    <button type="button" onClick={() => onSensitivityChange?.(0.25)} className="hover:text-white">0.25x</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(0.5)} className="hover:text-white font-bold text-sky-400">0.5x (Def)</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(1.0)} className="hover:text-white">1.0x</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(2.0)} className="hover:text-white">2.0x</button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Lock Constraint Button */}
             <button

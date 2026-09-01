@@ -30,6 +30,7 @@ import {
   HolisticStrokeDNA,
   EraserMode,
   LoadedModelInfo,
+  ProjectSaveData,
 } from '../types';
 import { ShapeSnappingEngine, ShapeSnapResult } from './shapeSnapping';
 import { ConformalBeadGenerator } from './conformalBeadGenerator';
@@ -219,6 +220,12 @@ export class StudioEngine {
   public onShapeSnapped?: (result: ShapeSnapResult) => void;
   public onDNAInjected?: (dna: HolisticStrokeDNA) => void;
   public onModelsChanged?: (models: LoadedModelInfo[]) => void;
+  public onStrokeSelected?: (stroke: StrokeDescriptor | null) => void;
+
+  private selectedStrokeId: string | null = null;
+  private selectionHighlightGroup: THREE.Group | null = null;
+  private navigatorSensitivity: number = 0.5;
+  private currentLayers: Layer[] = [];
 
   private activeSelectedModelId: string | null = null;
   private guideHelperMesh: THREE.Mesh | null = null;
@@ -1884,6 +1891,7 @@ export class StudioEngine {
    * Re-renders all layers with recursive hierarchy inheritance for opacity, visibility, and GPU blend mode
    */
   public syncLayers(layers: Layer[]): void {
+    this.currentLayers = [...layers];
     const layerMap = new Map(layers.map((l) => [l.id, l]));
 
     // Compute effective hierarchy properties (inheriting visibility and opacity from parent groups)
@@ -2411,11 +2419,291 @@ export class StudioEngine {
     return this.clipboardStrokes.length;
   }
 
+  public setNavigatorSensitivity(s: number): void {
+    this.navigatorSensitivity = Math.max(0.1, Math.min(3.0, s));
+  }
+
+  public getNavigatorSensitivity(): number {
+    return this.navigatorSensitivity;
+  }
+
+  /**
+   * Raycast against stroke meshes to select a stroke by pointer
+   */
+  public raycastStroke(screenX: number, screenY: number): string | null {
+    const coords = new THREE.Vector2(screenX, screenY);
+    this.raycaster.setFromCamera(coords, this.camera);
+
+    const strokeMeshes: THREE.Mesh[] = [];
+    const meshToStrokeId = new Map<THREE.Mesh, string>();
+
+    this.strokes.forEach(({ meshes }, strokeId) => {
+      for (const m of meshes) {
+        strokeMeshes.push(m);
+        meshToStrokeId.set(m, strokeId);
+      }
+    });
+
+    if (strokeMeshes.length === 0) return null;
+
+    const intersects = this.raycaster.intersectObjects(strokeMeshes, true);
+    if (intersects.length > 0) {
+      const hitMesh = intersects[0].object as THREE.Mesh;
+      return meshToStrokeId.get(hitMesh) || null;
+    }
+    return null;
+  }
+
+  /**
+   * Set currently selected stroke and highlight it
+   */
+  public selectStroke(strokeId: string | null): StrokeDescriptor | null {
+    this.selectedStrokeId = strokeId;
+
+    // Clear old highlight
+    if (this.selectionHighlightGroup) {
+      this.helperRoot.remove(this.selectionHighlightGroup);
+      this.selectionHighlightGroup.traverse((child: any) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach((m: any) => m.dispose());
+          else child.material.dispose();
+        }
+      });
+      this.selectionHighlightGroup = null;
+    }
+
+    if (!strokeId) {
+      this.onStrokeSelected?.(null);
+      return null;
+    }
+
+    const stroke = this.strokes.get(strokeId);
+    if (!stroke) {
+      this.selectedStrokeId = null;
+      this.onStrokeSelected?.(null);
+      return null;
+    }
+
+    // Build bounding highlight box
+    const group = new THREE.Group();
+    const box = new THREE.Box3();
+    for (const m of stroke.meshes) {
+      m.geometry.computeBoundingBox();
+      if (m.geometry.boundingBox) {
+        const meshBox = m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld);
+        box.union(meshBox);
+      }
+    }
+
+    if (!box.isEmpty()) {
+      const helper = new THREE.Box3Helper(box, new THREE.Color(0x38bdf8));
+      (helper.material as THREE.LineBasicMaterial).depthTest = false;
+      group.add(helper);
+      this.selectionHighlightGroup = group;
+      this.helperRoot.add(group);
+    }
+
+    this.onStrokeSelected?.(stroke.descriptor);
+    return stroke.descriptor;
+  }
+
+  public getSelectedStrokeId(): string | null {
+    return this.selectedStrokeId;
+  }
+
+  public getSelectedStroke(): StrokeDescriptor | null {
+    if (!this.selectedStrokeId) return null;
+    const entry = this.strokes.get(this.selectedStrokeId);
+    return entry ? entry.descriptor : null;
+  }
+
+  public deleteSelectedStroke(): boolean {
+    if (!this.selectedStrokeId) return false;
+    const stroke = this.strokes.get(this.selectedStrokeId);
+    if (!stroke) return false;
+
+    for (const m of stroke.meshes) {
+      if (m.parent) m.parent.remove(m);
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach((mat: any) => mat.dispose());
+        else m.material.dispose();
+      }
+    }
+
+    this.undoStack.push({
+      type: 'erase',
+      strokes: [stroke.descriptor],
+    });
+    this.redoStack = [];
+
+    this.strokes.delete(this.selectedStrokeId);
+    this.selectStroke(null);
+    this.notifyHistory();
+    return true;
+  }
+
+  public getLayersSnapshot(): Layer[] {
+    return this.currentLayers;
+  }
+
+  /**
+   * Recreates a stroke mesh from its descriptor and registers it
+   */
+  public recreateStrokeFromDescriptor(desc: StrokeDescriptor): void {
+    if (!desc || !desc.points || desc.points.length === 0) return;
+
+    // Convert raw points to Three.js Vector3 instances if needed
+    const parsedPoints: StrokePoint[] = desc.points.map((p) => {
+      const pos = (p.position as any) instanceof THREE.Vector3
+        ? (p.position as unknown as THREE.Vector3)
+        : new THREE.Vector3((p.position as any)?.x ?? 0, (p.position as any)?.y ?? 0, (p.position as any)?.z ?? 0);
+      const norm = (p.normal as any) instanceof THREE.Vector3
+        ? (p.normal as unknown as THREE.Vector3)
+        : new THREE.Vector3((p.normal as any)?.x ?? 0, (p.normal as any)?.y ?? 1, (p.normal as any)?.z ?? 0);
+      const tan = p.tangent
+        ? ((p.tangent as any) instanceof THREE.Vector3
+          ? (p.tangent as unknown as THREE.Vector3)
+          : new THREE.Vector3((p.tangent as any)?.x ?? 0, (p.tangent as any)?.y ?? 0, (p.tangent as any)?.z ?? 0))
+        : undefined;
+
+      return {
+        ...p,
+        position: pos,
+        normal: norm,
+        tangent: tan,
+      };
+    });
+
+    const mat = this.materialCache.getStrokeMaterial(desc.settings, true, this.activeLayerOpacity);
+    const geom = this.beadGenerator.generateGeometry(parsedPoints, desc.settings, this.targetMeshes);
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.renderOrder = 5;
+    this.strokeRoot.add(mesh);
+
+    this.strokes.set(desc.id, {
+      descriptor: {
+        ...desc,
+        points: parsedPoints,
+      },
+      meshes: [mesh],
+    });
+  }
+
+  /**
+   * Export all strokes, layers, scene environment and camera data as ProjectSaveData
+   */
+  public exportProjectData(projectName: string = 'Remix 3D Project', explicitLayers?: Layer[]): ProjectSaveData {
+    const allStrokes: StrokeDescriptor[] = [];
+    this.strokes.forEach(({ descriptor }) => {
+      allStrokes.push({
+        ...descriptor,
+        points: descriptor.points.map((p) => ({
+          ...p,
+          position: { x: p.position.x, y: p.position.y, z: p.position.z } as any,
+          normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z } as any,
+          tangent: p.tangent ? ({ x: p.tangent.x, y: p.tangent.y, z: p.tangent.z } as any) : undefined,
+        })),
+      });
+    });
+
+    const project: ProjectSaveData = {
+      version: '14.0.0',
+      name: projectName,
+      timestamp: Date.now(),
+      camera: {
+        position: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
+        target: [this.cameraTarget.x, this.cameraTarget.y, this.cameraTarget.z],
+        fov: this.camera.fov,
+        spherical: {
+          radius: this.cameraSpherical.radius,
+          theta: this.cameraSpherical.theta,
+          phi: this.cameraSpherical.phi,
+        },
+      },
+      layers: explicitLayers && explicitLayers.length > 0 ? explicitLayers : this.getLayersSnapshot(),
+      strokes: allStrokes,
+      activeModelName: this.activeModelName,
+      showGrid: this.gridHelper?.visible ?? true,
+      showWireframe: this.modelWireframeOpacity > 0,
+    };
+    return project;
+  }
+
+  /**
+   * Export project to downloadable .remix3d JSON file
+   */
+  public exportProjectFile(filename: string = 'project.remix3d'): void {
+    const data = this.exportProjectData(filename.replace('.remix3d', ''));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.remix3d') ? filename : `${filename}.remix3d`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Import project from ProjectSaveData and recreate all strokes & layers
+   */
+  public importProjectData(project: ProjectSaveData): void {
+    if (!project) return;
+
+    // 1. Clear existing strokes
+    this.strokes.forEach(({ meshes }) => {
+      meshes.forEach((m) => {
+        if (m.parent) m.parent.remove(m);
+        m.geometry.dispose();
+      });
+    });
+    this.strokes.clear();
+    this.undoStack = [];
+    this.redoStack = [];
+    this.selectStroke(null);
+
+    // 2. Restore camera if available
+    if (project.camera) {
+      if (project.camera.target) {
+        this.cameraTarget.set(project.camera.target[0], project.camera.target[1], project.camera.target[2]);
+      }
+      if (project.camera.position) {
+        this.camera.position.set(project.camera.position[0], project.camera.position[1], project.camera.position[2]);
+        this.camera.lookAt(this.cameraTarget);
+      }
+      if (project.camera.fov) {
+        this.camera.fov = project.camera.fov;
+        this.camera.updateProjectionMatrix();
+      }
+      if (project.camera.spherical) {
+        this.cameraSpherical.set(
+          project.camera.spherical.radius,
+          project.camera.spherical.phi,
+          project.camera.spherical.theta
+        );
+        this.targetSpherical.copy(this.cameraSpherical);
+      }
+    }
+
+    // 3. Rebuild strokes
+    if (Array.isArray(project.strokes)) {
+      for (const desc of project.strokes) {
+        this.recreateStrokeFromDescriptor(desc);
+      }
+    }
+
+    this.notifyHistory();
+    this.onAutoSaveTrigger?.('project_loaded');
+  }
+
   /**
    * Spherical Orbit Controls
    */
   public orbit(deltaX: number, deltaY: number): void {
-    const rotSpeed = 0.006;
+    const rotSpeed = 0.006 * this.navigatorSensitivity;
     this.targetSpherical.theta -= deltaX * rotSpeed;
     this.targetSpherical.phi -= deltaY * rotSpeed;
 
@@ -2786,7 +3074,7 @@ export class StudioEngine {
     scope: TransformTargetScope = 'all',
     isLocked: boolean = false
   ): void {
-    let angle = deltaAngleRad;
+    let angle = deltaAngleRad * this.navigatorSensitivity;
 
     // Locked Constraints: Quantize into exact 15-degree increments (PI / 12)
     if (isLocked) {
@@ -2820,9 +3108,9 @@ export class StudioEngine {
     scope: TransformTargetScope = 'all'
   ): void {
     const vec = new THREE.Vector3(
-      axis === 'x' ? deltaWorld : 0,
-      axis === 'y' ? deltaWorld : 0,
-      axis === 'z' ? deltaWorld : 0
+      axis === 'x' ? deltaWorld * this.navigatorSensitivity : 0,
+      axis === 'y' ? deltaWorld * this.navigatorSensitivity : 0,
+      axis === 'z' ? deltaWorld * this.navigatorSensitivity : 0
     );
     const transMat = new THREE.Matrix4().makeTranslation(vec.x, vec.y, vec.z);
     this.applyTransformMatrix(transMat, scope);
@@ -2838,7 +3126,7 @@ export class StudioEngine {
     scope: TransformTargetScope = 'all',
     isLocked: boolean = false
   ): void {
-    let angle = deltaAngleRad;
+    let angle = deltaAngleRad * this.navigatorSensitivity;
     if (isLocked) {
       const step = Math.PI / 12; // 15 degrees
       angle = Math.round(angle / step) * step;
@@ -2874,7 +3162,7 @@ export class StudioEngine {
     scope: TransformTargetScope = 'all'
   ): void {
     const center = this.getSelectionCenter(scope);
-    const rotSpeed = 0.008;
+    const rotSpeed = 0.008 * this.navigatorSensitivity;
 
     const forward = this.camera.getWorldDirection(new THREE.Vector3()).normalize();
     const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();
