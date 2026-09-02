@@ -129,6 +129,28 @@ export class MaterialCache {
     } else if (matType === 'animated_fx') {
       // 4. Animated FX Shader Material (Custom GLSL or standard 27 presets)
       if (settings.customShader && settings.customShader.fragmentShader) {
+        let boundTex = settings.matcapTexture || null;
+        if (!boundTex && settings.matcapUrl) {
+          try {
+            const loader = new THREE.TextureLoader();
+            boundTex = loader.load(settings.matcapUrl);
+          } catch (_) {}
+        }
+        
+        // Use a 2x2 white canvas texture fallback if no texture is provided to safely satisfy sampler2D uniforms
+        if (!boundTex) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 2;
+          canvas.height = 2;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 2, 2);
+          }
+          boundTex = new THREE.CanvasTexture(canvas);
+          boundTex.needsUpdate = true;
+        }
+
         const customUniforms: Record<string, any> = {
           uColor: { value: new THREE.Vector3(color.r, color.g, color.b) },
           u_color: { value: new THREE.Vector3(color.r, color.g, color.b) },
@@ -146,8 +168,18 @@ export class MaterialCache {
           u_roughness: { value: settings.roughness ?? 0.5 },
           u_light_dir: { value: new THREE.Vector3(1, 2, 1).normalize() },
           uLightDirection: { value: new THREE.Vector3(1, 2, 1).normalize() },
+          uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
           uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
           u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+          resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+          iResolution: { value: new THREE.Vector3(window.innerWidth, window.innerHeight, 1.0) },
+          u_mouse: { value: new THREE.Vector2(0, 0) },
+          iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
+          u_matcap: { value: boundTex },
+          tBackground: { value: boundTex },
+          u_texture: { value: boundTex },
+          iChannel0: { value: boundTex },
+          tDiffuse: { value: boundTex },
         };
         const shaderMat = new THREE.ShaderMaterial({
           uniforms: customUniforms,

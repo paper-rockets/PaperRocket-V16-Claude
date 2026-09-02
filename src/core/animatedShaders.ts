@@ -81,17 +81,37 @@ vec3 oklab_mix(vec3 colA, vec3 colB, float t) {
 
 export const STANDARD_VERTEX_SHADER = `
 varying vec2 vUv;
+varying vec2 v_uv;
+varying vec2 v_matcap_uv;
 varying vec3 vNormal;
+varying vec3 v_normal;
 varying vec3 vWorldPosition;
+varying vec3 v_world_pos;
 varying vec3 vViewPosition;
+varying vec3 v_view_pos;
+varying vec3 v_position;
+varying vec3 vPosition;
 
 void main() {
   vUv = uv;
+  v_uv = uv;
   vNormal = normalize(normalMatrix * normal);
+  v_normal = vNormal;
+
   vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldPosition = worldPos.xyz;
+  v_world_pos = worldPos.xyz;
+
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   vViewPosition = -mvPosition.xyz;
+  v_view_pos = -mvPosition.xyz;
+  v_position = mvPosition.xyz;
+  vPosition = position;
+
+  // View-space normal mapped to [0, 1] texture coordinates for MatCap
+  vec3 view_normal = normalize(vNormal);
+  v_matcap_uv = view_normal.xy * 0.5 + 0.5;
+
   gl_Position = projectionMatrix * mvPosition;
 }
 `;
@@ -322,8 +342,11 @@ export class AnimatedShaderRegistry {
       if (mat.uniforms.iTime) mat.uniforms.iTime.value = timeInSeconds;
       if (mat.uniforms.uLightDirection) mat.uniforms.uLightDirection.value.copy(this.lightDirection);
       if (mat.uniforms.u_light_dir) mat.uniforms.u_light_dir.value.copy(this.lightDirection);
+      if (mat.uniforms.uSunDir) mat.uniforms.uSunDir.value.copy(this.lightDirection);
       if (mat.uniforms.uResolution) mat.uniforms.uResolution.value.copy(this.resolution);
       if (mat.uniforms.u_resolution) mat.uniforms.u_resolution.value.copy(this.resolution);
+      if (mat.uniforms.resolution) mat.uniforms.resolution.value.copy(this.resolution);
+      if (mat.uniforms.iResolution) mat.uniforms.iResolution.value.set(this.resolution.x, this.resolution.y, 1.0);
     });
   }
 

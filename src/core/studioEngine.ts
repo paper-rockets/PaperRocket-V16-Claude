@@ -224,7 +224,7 @@ export class StudioEngine {
 
   private selectedStrokeId: string | null = null;
   private selectionHighlightGroup: THREE.Group | null = null;
-  private navigatorSensitivity: number = 0.5;
+  private navigatorSensitivity: number = 0.35;
   private currentLayers: Layer[] = [];
 
   private activeSelectedModelId: string | null = null;
@@ -3005,9 +3005,9 @@ export class StudioEngine {
     }
 
     const targetCenter = this.getSelectionCenter(scope);
-    const dist = this.camera.position.distanceTo(targetCenter);
+    const dist = Math.max(0.5, this.camera.position.distanceTo(targetCenter));
     const vHeight = 2 * dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const factor = vHeight / (this.container?.clientHeight || 800);
+    const factor = (vHeight / (this.container?.clientHeight || 800)) * this.navigatorSensitivity;
 
     const forward = this.camera.getWorldDirection(new THREE.Vector3()).normalize();
     const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();
@@ -3162,7 +3162,7 @@ export class StudioEngine {
     scope: TransformTargetScope = 'all'
   ): void {
     const center = this.getSelectionCenter(scope);
-    const rotSpeed = 0.008 * this.navigatorSensitivity;
+    const rotSpeed = 0.005 * this.navigatorSensitivity;
 
     const forward = this.camera.getWorldDirection(new THREE.Vector3()).normalize();
     const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();

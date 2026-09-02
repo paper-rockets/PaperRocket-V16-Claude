@@ -106,7 +106,7 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
     const clampedOffsetY = Math.max(-14, Math.min(14, totalDy * 0.25));
     setTrackballOffset({ x: clampedOffsetX, y: clampedOffsetY });
 
-    const rotDelta = computeTrackballRotation(deltaX, deltaY, 0.9);
+    const rotDelta = computeTrackballRotation(deltaX, deltaY, 0.35);
 
     // Subtle tactile tick during continuous trackball roll
     if (Math.hypot(deltaX, deltaY) > 2) {

@@ -635,9 +635,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('z', -dirV * 0.06, targetScope);
+          engine.translateAxis3D('z', -dirV * 0.02, targetScope);
         } else {
-          engine.translateScreenSpace(0, -dirV * 30.0, targetScope, isLocked);
+          engine.translateScreenSpace(0, -dirV * 1.5, targetScope, isLocked);
         }
       }
     } else if (activeAxis === 'x') {
@@ -647,9 +647,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('x', dirU * 0.06, targetScope);
+          engine.translateAxis3D('x', dirU * 0.02, targetScope);
         } else {
-          engine.translateScreenSpace(dirU * 30.0, 0, targetScope, isLocked);
+          engine.translateScreenSpace(dirU * 1.5, 0, targetScope, isLocked);
         }
       }
     } else if (activeAxis === 'y') {
@@ -659,9 +659,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
       if (engine) {
         if (mode === '3d') {
-          engine.translateAxis3D('y', -dirV * 0.06, targetScope);
+          engine.translateAxis3D('y', -dirV * 0.02, targetScope);
         } else {
-          engine.translateScreenSpace(0, dirV * 30.0, targetScope, isLocked);
+          engine.translateScreenSpace(0, dirV * 1.5, targetScope, isLocked);
         }
       }
     } else {
@@ -670,7 +670,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       setDragValueLabel(`${disp}mm`);
 
       if (engine) {
-        engine.translateScreenSpace(dirU * 30.0, dirV * 30.0, targetScope, isLocked);
+        engine.translateScreenSpace(dirU * 1.5, dirV * 1.5, targetScope, isLocked);
       }
     }
   };
@@ -721,7 +721,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         );
 
         if (engine) {
-          engine.translateScreenSpace(vx * 15.0, -vy * 15.0, targetScope, isLocked);
+          engine.translateScreenSpace(vx * 1.2, -vy * 1.2, targetScope, isLocked);
         }
 
         joystickFrictionRef.current = requestAnimationFrame(stepJoystickFriction);
@@ -1201,9 +1201,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
                 if (engine) {
                   if (targetScope === 'active_layer' || targetScope === 'model' || targetScope === 'strokes') {
-                    engine.rotateTrackball(deltaYaw * 0.8, -deltaPitch * 0.8, targetScope);
+                    engine.rotateTrackball(deltaYaw * 0.35, -deltaPitch * 0.35, targetScope);
                   } else {
-                    engine.orbitCamera(-deltaYaw * 0.015, -deltaPitch * 0.015);
+                    engine.orbitCamera(-deltaYaw * 0.005, -deltaPitch * 0.005);
                   }
                 }
               }}

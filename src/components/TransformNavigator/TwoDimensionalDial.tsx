@@ -41,6 +41,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
   const [stickPos, setStickPos] = useState({ x: 0, y: 0 });
   const [isStickDragging, setIsStickDragging] = useState(false);
   const stickDragOriginRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const stickPrevRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const hitBoundaryRef = useRef(false);
 
   // Active handle tracking
@@ -49,11 +50,13 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
   // Rotation angle state for 2D rotate handle
   const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
   const rotateStartAngleRef = useRef<number>(0);
+  const rotatePrevAngleRef = useRef<number>(0);
   const initialRotationAngleRef = useRef<number>(0);
   const lastAngleDetentRef = useRef<number>(0);
 
   // Scale drag states
   const scaleDragOriginRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const scalePrevRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const lastScaleStepRef = useRef<number>(1);
   const [scaleDisplacements, setScaleDisplacements] = useState({
     top: { x: 0, y: 0 },
@@ -77,6 +80,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     e.currentTarget.setPointerCapture(e.pointerId);
 
     stickDragOriginRef.current = { clientX: e.clientX, clientY: e.clientY };
+    stickPrevRef.current = { clientX: e.clientX, clientY: e.clientY };
     setIsStickDragging(true);
     hitBoundaryRef.current = false;
     setActiveHandle('move');
@@ -90,6 +94,10 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
 
     const rawDx = e.clientX - stickDragOriginRef.current.clientX;
     const rawDy = e.clientY - stickDragOriginRef.current.clientY;
+
+    const stepDx = e.clientX - (stickPrevRef.current ? stickPrevRef.current.clientX : e.clientX);
+    const stepDy = e.clientY - (stickPrevRef.current ? stickPrevRef.current.clientY : e.clientY);
+    stickPrevRef.current = { clientX: e.clientX, clientY: e.clientY };
 
     const rawDistance = Math.hypot(rawDx, rawDy);
     const maxBound = 48; // Boundary radius for pure travel
@@ -120,19 +128,12 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
       normalizedX,
       normalizedY,
       normalizedZ: 0,
-      deltaX: rawDx,
-      deltaY: -rawDy,
+      deltaX: stepDx,
+      deltaY: -stepDy,
       deltaZ: 0,
       source: '2d-move-stick',
       timestamp: Date.now(),
     };
-
-    console.log('[TransformNavigator 2D] Move Vector:', {
-      normX: normalizedX,
-      normY: normalizedY,
-      rawDx,
-      rawDy,
-    });
 
     onTranslate?.(payload);
   };
@@ -148,6 +149,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
 
     setIsStickDragging(false);
     stickDragOriginRef.current = null;
+    stickPrevRef.current = null;
     hitBoundaryRef.current = false;
     setActiveHandle(null);
     haptics.trigger('snap');
@@ -191,6 +193,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     const angleDeg = normalizeAngleDeg((angleRad * 180) / Math.PI);
 
     rotateStartAngleRef.current = angleDeg;
+    rotatePrevAngleRef.current = angleDeg;
     initialRotationAngleRef.current = currentRotationAngle;
     lastAngleDetentRef.current = currentRotationAngle;
 
@@ -210,11 +213,16 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     const angleRad = getAngle(e.clientX - centerX, e.clientY - centerY);
     const currentAngleDeg = normalizeAngleDeg((angleRad * 180) / Math.PI);
 
-    let deltaAngle = currentAngleDeg - rotateStartAngleRef.current;
-    if (deltaAngle > 180) deltaAngle -= 360;
-    if (deltaAngle < -180) deltaAngle += 360;
+    let totalDeltaAngle = currentAngleDeg - rotateStartAngleRef.current;
+    if (totalDeltaAngle > 180) totalDeltaAngle -= 360;
+    if (totalDeltaAngle < -180) totalDeltaAngle += 360;
 
-    const newAngle = normalizeAngleDeg(initialRotationAngleRef.current + deltaAngle);
+    let stepDeltaAngle = currentAngleDeg - (rotatePrevAngleRef.current ?? currentAngleDeg);
+    if (stepDeltaAngle > 180) stepDeltaAngle -= 360;
+    if (stepDeltaAngle < -180) stepDeltaAngle += 360;
+    rotatePrevAngleRef.current = currentAngleDeg;
+
+    const newAngle = normalizeAngleDeg(initialRotationAngleRef.current + totalDeltaAngle);
     setCurrentRotationAngle(newAngle);
 
     // Haptic detent feedback every 15 degrees
@@ -224,16 +232,11 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
       rx: 0,
       ry: 0,
       rz: Number(newAngle.toFixed(2)),
-      deltaAngle: Number(deltaAngle.toFixed(2)),
+      deltaAngle: Number(stepDeltaAngle.toFixed(2)),
       axis: '2d-plane',
       source: '2d-rotate-handle',
       timestamp: Date.now(),
     };
-
-    console.log('[TransformNavigator 2D] Rotate In-Plane:', {
-      angleDeg: Number(newAngle.toFixed(2)),
-      deltaAngle: Number(deltaAngle.toFixed(2)),
-    });
 
     onRotate?.(payload);
   };
@@ -266,6 +269,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     e.currentTarget.setPointerCapture(e.pointerId);
 
     scaleDragOriginRef.current = { clientX: e.clientX, clientY: e.clientY };
+    scalePrevRef.current = { clientX: e.clientX, clientY: e.clientY };
     lastScaleStepRef.current = 1;
     setActiveHandle(handleType);
     haptics.trigger('medium');
@@ -282,13 +286,18 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     const rawDx = e.clientX - scaleDragOriginRef.current.clientX;
     const rawDy = e.clientY - scaleDragOriginRef.current.clientY;
 
+    const stepDx = e.clientX - (scalePrevRef.current ? scalePrevRef.current.clientX : e.clientX);
+    const stepDy = e.clientY - (scalePrevRef.current ? scalePrevRef.current.clientY : e.clientY);
+    scalePrevRef.current = { clientX: e.clientX, clientY: e.clientY };
+
     if (handleType === 'scale-y') {
       const clampedDy = Math.max(-40, Math.min(40, rawDy));
       setScaleDisplacements((prev) => ({ ...prev, top: { x: 0, y: clampedDy } }));
 
       // Dragging up (negative dy) scales UP (height > 1.0)
-      const scaleDelta = -rawDy * 0.02;
-      const sy = Math.max(0.1, Number((1 + scaleDelta).toFixed(3)));
+      const scaleDelta = -stepDy * 0.01;
+      const totalDelta = -rawDy * 0.02;
+      const sy = Math.max(0.1, Number((1 + totalDelta).toFixed(3)));
 
       const step = Math.round(sy * 4) / 4;
       if (Math.abs(step - lastScaleStepRef.current) >= 0.25) {
@@ -306,14 +315,14 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         source: '2d-scale-top',
         timestamp: Date.now(),
       });
-      console.log('[TransformNavigator 2D] Scale Height (Y):', { sy, rawDy });
     } else if (handleType === 'scale-x') {
       const clampedDx = Math.max(-40, Math.min(40, rawDx));
       setScaleDisplacements((prev) => ({ ...prev, left: { x: clampedDx, y: 0 } }));
 
       // Dragging left (negative dx) or right scales width
-      const scaleDelta = -rawDx * 0.02;
-      const sx = Math.max(0.1, Number((1 + scaleDelta).toFixed(3)));
+      const scaleDelta = -stepDx * 0.01;
+      const totalDelta = -rawDx * 0.02;
+      const sx = Math.max(0.1, Number((1 + totalDelta).toFixed(3)));
 
       const step = Math.round(sx * 4) / 4;
       if (Math.abs(step - lastScaleStepRef.current) >= 0.25) {
@@ -331,7 +340,6 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         source: '2d-scale-left',
         timestamp: Date.now(),
       });
-      console.log('[TransformNavigator 2D] Scale Width (X):', { sx, rawDx });
     } else if (handleType === 'scale-uniform') {
       const clampedDist = Math.max(-30, Math.min(30, (rawDx - rawDy) / 1.414));
       setScaleDisplacements((prev) => ({
@@ -339,8 +347,9 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         topLeft: { x: clampedDist, y: -clampedDist },
       }));
 
-      const scaleDelta = (-rawDx - rawDy) * 0.015;
-      const uniform = Math.max(0.1, Number((1 + scaleDelta).toFixed(3)));
+      const scaleDelta = (-stepDx - stepDy) * 0.008;
+      const totalDelta = (-rawDx - rawDy) * 0.015;
+      const uniform = Math.max(0.1, Number((1 + totalDelta).toFixed(3)));
 
       const step = Math.round(uniform * 4) / 4;
       if (Math.abs(step - lastScaleStepRef.current) >= 0.25) {
@@ -358,7 +367,6 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         source: '2d-scale-uniform',
         timestamp: Date.now(),
       });
-      console.log('[TransformNavigator 2D] Scale Uniform:', { uniform, scaleDelta });
     }
   };
 
@@ -377,6 +385,7 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     setActiveHandle(null);
     haptics.trigger('light');
     scaleDragOriginRef.current = null;
+    scalePrevRef.current = null;
     setScaleDisplacements({
       top: { x: 0, y: 0 },
       left: { x: 0, y: 0 },

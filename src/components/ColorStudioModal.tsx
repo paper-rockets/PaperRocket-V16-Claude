@@ -355,6 +355,8 @@ void main() {
           vertexShader: preset.vertexShader,
           fragmentShader: preset.fragmentShader,
         },
+        matcapUrl: preset.url,
+        matcapTexture: texture || undefined,
         color: currentColor,
       });
     } else {
@@ -403,6 +405,8 @@ void main() {
             vertexShader: preset.vertexShader,
             fragmentShader: preset.fragmentShader,
           },
+          matcapUrl: preset.url,
+          matcapTexture: texture || undefined,
           color: currentColor,
         });
       } else {
@@ -1286,13 +1290,19 @@ export const ColorStudioModal: React.FC<ColorStudioModalProps> = ({
 
           <button
             onClick={() => {
-              onChangeColor(currentColor);
-              onApplyBrushSettings?.({ color: currentColor });
-              onClose();
+              if (activeTab === 'shaders') {
+                // Shader tab already applied shader to brush via callbacks; synchronize color and close
+                onChangeColor(currentColor);
+                onClose();
+              } else {
+                onChangeColor(currentColor);
+                onApplyBrushSettings?.({ color: currentColor });
+                onClose();
+              }
             }}
             className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold transition-colors shadow-sm cursor-pointer"
           >
-            {activeTab === 'shaders' ? 'Apply to Brush' : 'Apply Color'}
+            {activeTab === 'shaders' ? 'Done' : 'Apply Color'}
           </button>
         </div>
       </div>

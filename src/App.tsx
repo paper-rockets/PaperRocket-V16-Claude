@@ -467,11 +467,11 @@ export default function App() {
     (payload: TranslationEventPayload) => {
       if (!engine) return;
       if (payload.source.startsWith('2d-move-stick')) {
-        engine.translateScreenSpace(payload.deltaX * 0.35, payload.deltaY * 0.35, targetScope, isGizmoLocked);
+        engine.translateScreenSpace(payload.deltaX * 0.15, payload.deltaY * 0.15, targetScope, isGizmoLocked);
       } else if (payload.source.startsWith('3d-node')) {
-        if (payload.x !== 0) engine.translateAxis3D('x', payload.x * 0.35, targetScope);
-        if (payload.y !== 0) engine.translateAxis3D('y', payload.y * 0.35, targetScope);
-        if (payload.z !== 0) engine.translateAxis3D('z', payload.z * 0.35, targetScope);
+        if (payload.x !== 0) engine.translateAxis3D('x', payload.x * 0.05, targetScope);
+        if (payload.y !== 0) engine.translateAxis3D('y', payload.y * 0.05, targetScope);
+        if (payload.z !== 0) engine.translateAxis3D('z', payload.z * 0.05, targetScope);
       }
     },
     [engine, isGizmoLocked, targetScope]
@@ -483,7 +483,7 @@ export default function App() {
       if (payload.source === '2d-rotate-handle') {
         engine.rotateAxis3D('z', (payload.deltaAngle * Math.PI) / 180, targetScope, isGizmoLocked);
       } else if (payload.source === '3d-trackball-sphere') {
-        engine.rotateTrackball(payload.rx, payload.ry, targetScope);
+        engine.rotateTrackball(payload.ry, payload.rx, targetScope);
       } else if (payload.axis === 'x' || payload.axis === 'y' || payload.axis === 'z') {
         engine.rotateAxis3D(payload.axis, (payload.deltaAngle * Math.PI) / 180, targetScope, isGizmoLocked);
       }
@@ -495,7 +495,7 @@ export default function App() {
     (payload: ScaleEventPayload) => {
       if (!engine) return;
       if (payload.deltaScale) {
-        engine.scaleAxis3D(1 + payload.deltaScale * 0.1, targetScope);
+        engine.scaleAxis3D(1 + payload.deltaScale, targetScope);
       }
     },
     [engine, targetScope]
