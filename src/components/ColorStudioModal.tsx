@@ -83,7 +83,7 @@ function MatCapShaderTabContent({
 
   const [activeCategory, setActiveCategory] = useState<string>('Toon & Anime');
   const [materialMode, setMaterialMode] = useState<'matcap' | 'shader'>('matcap');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('toon_anime');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
   const [activeShader, setActiveShader] = useState<any>(SHADER_PRESETS[0]);
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
@@ -118,9 +118,12 @@ function MatCapShaderTabContent({
     meshRef.current = mesh;
     materialRef.current = defaultMat;
 
-    // Load initial preset
-    const initialPreset = ALL_MATERIAL_PRESETS.find((p) => p.id === 'toon_anime') || ALL_MATERIAL_PRESETS[0];
+    // Load initial preset — pick the first one matching the default category
+    const initialPreset = ALL_MATERIAL_PRESETS.find((p) =>
+      p.category === 'Toon Shaders' || p.category === 'Flat Colors'
+    ) || ALL_MATERIAL_PRESETS[0];
     if (initialPreset) {
+      setSelectedPresetId(initialPreset.id);
       if (initialPreset.type === 'shader') {
         setMaterialMode('shader');
         setActiveShader(initialPreset);
@@ -346,19 +349,6 @@ void main() {
         fragmentShader: preset.fragmentShader,
         uniforms: {}
       });
-      onApplyBrushSettings?.({
-        materialType: 'animated_fx',
-        shaderEffect: 'anime_cel',
-        customShader: {
-          id: preset.id,
-          name: preset.name,
-          vertexShader: preset.vertexShader,
-          fragmentShader: preset.fragmentShader,
-        },
-        matcapUrl: preset.url,
-        matcapTexture: texture || undefined,
-        color: currentColor,
-      });
     } else {
       setMaterialMode('matcap');
       const img = new Image();
@@ -373,12 +363,6 @@ void main() {
           const tex = new THREE.CanvasTexture(canvas);
           tex.needsUpdate = true;
           setTexture(tex);
-          onApplyBrushSettings?.({
-            materialType: 'matcap',
-            matcapUrl: preset.url,
-            matcapTexture: tex,
-            color: currentColor,
-          });
 
           // Sample center pixel to synchronize color picker
           try {
@@ -417,6 +401,24 @@ void main() {
           color: currentColor,
         });
       }
+    } else if (materialMode === 'shader' && activeShader) {
+      onApplyBrushSettings?.({
+        materialType: 'animated_fx',
+        shaderEffect: 'anime_cel',
+        customShader: {
+          id: activeShader.id,
+          name: activeShader.name,
+          vertexShader: activeShader.vertexShader,
+          fragmentShader: activeShader.fragmentShader,
+        },
+        color: currentColor,
+      });
+    } else if (materialMode === 'matcap' && texture) {
+      onApplyBrushSettings?.({
+        materialType: 'matcap',
+        matcapTexture: texture,
+        color: currentColor,
+      });
     }
     onClose();
   };
