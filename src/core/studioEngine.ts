@@ -443,7 +443,7 @@ export class StudioEngine {
   private getDRACOLoader(): DRACOLoader {
     if (!this.dracoLoader) {
       this.dracoLoader = new DRACOLoader();
-      this.dracoLoader.setDecoderPath('/draco/');
+      this.dracoLoader.setDecoderPath(resolveAssetUrl('draco/'));
       this.dracoLoader.setDecoderConfig({ type: 'wasm' });
       this.dracoLoader.preload();
     }

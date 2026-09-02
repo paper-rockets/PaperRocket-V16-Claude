@@ -9,6 +9,7 @@
     "dev:s25ultra": "node scripts/server-s25ultra.mjs",
     "dev:both": "node scripts/server-both.mjs",
     "dev:mobile": "node scripts/mobile-server.mjs",
+    "dev:full": "node scripts/server-full.mjs",
     "dev:https": "node scripts/mobile-server.mjs --https",
     "start": "node scripts/server-both.mjs",
     "build": "vite build",
@@ -19,7 +20,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:android:dev": "tauri android dev",
-    "tauri:android:build": "tauri android build --apk"
+    "tauri:android:build": "tauri android build --apk",
+    "build:android": "node scripts/build-apk.mjs",
+    "open:studio": "cmd /c open-android-studio.bat"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

@@ -32,6 +32,15 @@ For features requiring a Secure Context (Device Orientation, Gyroscope sensors, 
 npm run dev:https
 ```
 
+### 4. Native Android APK Compiler (WebGPU 3D & Android Studio)
+To compile a native standalone Android APK directly on this computer:
+- **One-Click Build**: Double-click **`build-android-apk.bat`** *(or run `npm run build:android`)*.
+- **Open in Android Studio**: Double-click **`open-android-studio.bat`** *(or run `npm run open:studio`)* to open `src-tauri/gen/android`.
+- **Install to Connected Device**:
+  ```bash
+  adb install -r "dist-apk/Remix3DStudio-arm64-debug.apk"
+  ```
+
 ---
 
 ## 📱 Mobile Interaction Guide
@@ -39,3 +48,4 @@ npm run dev:https
 - **2-Finger Touch**: Orbit (rotate), two-finger drag (pan), pinch (zoom).
 - **In-App Mobile Connect**: Click the **Mobile** icon or More menu in the studio header to display the live QR Code and connection diagnostics at any time.
 - **Full-Screen (PWA)**: In iOS Safari or Android Chrome, select *"Add to Home Screen"* for a distraction-free, native full-screen experience.
+

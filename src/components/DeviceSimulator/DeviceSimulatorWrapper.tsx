@@ -136,7 +136,7 @@ interface DeviceSimulatorWrapperProps {
 }
 
 export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
-  initialDevice = 's6lite',
+  initialDevice = 'fullscreen',
 }) => {
   // Determine initial device preset from query parameter, port, or prop
   const [device, setDevice] = useState<DevicePreset>(() => {
@@ -151,7 +151,7 @@ export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
       }
       // Check port-based default
       const port = window.location.port;
-      if (port === '3001') return 's6lite';
+      if (port === '3001') return 'fullscreen';
       if (port === '3002') return 's25ultra';
 
       // If running on an actual tablet, phone, touch device, or standalone PWA, default to fullscreen direct view
