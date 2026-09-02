@@ -189,6 +189,17 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
     } catch (_) {}
   };
 
+  const handleScaleCycle = () => {
+    const scales = [0.6, 0.75, 0.85, 1.0, 1.15];
+    const currentIdx = scales.findIndex((s) => Math.abs(s - navigatorScale) < 0.05);
+    const nextIdx = currentIdx === -1 ? 3 : (currentIdx + 1) % scales.length;
+    const next = scales[nextIdx];
+    setNavigatorScale(next);
+    try {
+      localStorage.setItem('mody_transform_navigator_scale', next.toString());
+    } catch (_) {}
+  };
+
   // Lock State
   const [internalLocked, setInternalLocked] = useState(false);
   const isLocked = controlledLocked !== undefined ? controlledLocked : internalLocked;
@@ -408,6 +419,18 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
         transformOrigin: 'top left',
       }}
       className={`fixed z-40 rounded-[26px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-visible flex flex-row items-stretch touch-none select-none ${className}`}
+      onWheel={(e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          const delta = -Math.sign(e.deltaY) * 0.05;
+          const next = Math.min(1.4, Math.max(0.55, Math.round((navigatorScale + delta) * 100) / 100));
+          setNavigatorScale(next);
+          try {
+            localStorage.setItem('mody_transform_navigator_scale', next.toString());
+          } catch (_) {}
+        }
+      }}
     >
       {/* Left: Dial Interactive Surface & Drag Area */}
       <div
@@ -515,6 +538,8 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
         onCopy={onCopy}
         onPaste={onPaste}
         clipboardCount={clipboardCount}
+        scaleFactor={navigatorScale}
+        onScaleCycle={handleScaleCycle}
         sensitivity={sensitivity}
         onSensitivityChange={onSensitivityChange}
       />
@@ -878,6 +903,15 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
           {Math.round(navigatorScale * 100)}%
         </div>
       )}
+
+      {/* Invisible Corner Drag Resize Hit Zone - ZERO VISIBLE DOTS */}
+      <div
+        id="transform-navigator-corner-resize-hit-zone"
+        onPointerDown={handleResizeStart}
+        className="absolute -bottom-1 -right-1 w-6 h-6 cursor-nwse-resize z-40 select-none touch-none"
+        title="Drag corner to scale tool"
+        aria-label="Drag corner to scale tool"
+      />
     </aside>
   );
 };

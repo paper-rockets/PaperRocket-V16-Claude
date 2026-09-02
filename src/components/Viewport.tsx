@@ -101,6 +101,20 @@ export const Viewport: React.FC<ViewportProps> = ({
   const [isStylusDetected, setIsStylusDetected] = useState<boolean>(false);
   const [isPanMode, setIsPanMode] = useState<boolean>(false);
 
+  // Floating Navigation Pod Auto-Hide State
+  const [isNavPodVisible, setIsNavPodVisible] = useState<boolean>(false);
+  const navPodTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showNavPod = (durationMs: number = 3000) => {
+    setIsNavPodVisible(true);
+    if (navPodTimerRef.current) {
+      clearTimeout(navPodTimerRef.current);
+    }
+    navPodTimerRef.current = setTimeout(() => {
+      setIsNavPodVisible(false);
+    }, durationMs);
+  };
+
   // Radial context menu state anchored at stylus tip
   const [isRadialMenuOpen, setIsRadialMenuOpen] = useState<boolean>(false);
   const [radialMenuPos, setRadialMenuPos] = useState<RadialMenuPosition | null>(null);
@@ -178,6 +192,7 @@ export const Viewport: React.FC<ViewportProps> = ({
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      if (navPodTimerRef.current) clearTimeout(navPodTimerRef.current);
       resizeObserver.disconnect();
       engine.dispose();
       engineRef.current = null;
@@ -531,6 +546,16 @@ export const Viewport: React.FC<ViewportProps> = ({
     const engine = engineRef.current;
     if (!engine) return;
 
+    // Auto-reveal camera navigation pod when cursor approaches bottom-right corner
+    if (!isPointerDown.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const distFromRight = rect.right - e.clientX;
+      const distFromBottom = rect.bottom - e.clientY;
+      if (distFromRight < 120 && distFromBottom < 220) {
+        showNavPod(3000);
+      }
+    }
+
     // -----------------------------------------------------------------------
     // BRANCH 1: STYLUS / PEN MOVE (STRICT DRAWING, NO CAMERA INTERFERENCE)
     // -----------------------------------------------------------------------
@@ -797,6 +822,7 @@ export const Viewport: React.FC<ViewportProps> = ({
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     engineRef.current?.zoom(e.deltaY * 0.8);
+    showNavPod(2500);
   };
 
   const handleContextMenu = (e: React.PointerEvent<HTMLDivElement> | React.MouseEvent) => {
@@ -882,31 +908,64 @@ export const Viewport: React.FC<ViewportProps> = ({
         </div>
       )}
 
-      {/* Floating Viewport Navigation Control Pod */}
-      <div className="absolute bottom-6 right-6 z-20 flex flex-col items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 p-1.5 rounded-2xl shadow-xl backdrop-blur-md pointer-events-auto">
+      {/* Invisible Hover-Wakeup Zone near bottom-right corner */}
+      <div
+        onPointerEnter={() => showNavPod(3500)}
+        className="absolute bottom-0 right-0 w-28 h-72 z-10 pointer-events-auto"
+        aria-hidden="true"
+      />
+
+      {/* Floating Viewport Navigation Control Pod with Smooth Auto-Hide */}
+      <div
+        id="viewport-camera-control-pod"
+        onPointerEnter={() => {
+          if (navPodTimerRef.current) clearTimeout(navPodTimerRef.current);
+          setIsNavPodVisible(true);
+        }}
+        onPointerLeave={() => {
+          showNavPod(1500);
+        }}
+        className={`absolute bottom-6 right-6 z-20 flex flex-col items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 p-1.5 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 ease-out ${
+          isNavPodVisible
+            ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto shadow-[0_12px_32px_rgba(0,0,0,0.6)]'
+            : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+        }`}
+      >
         <button
-          onClick={handleZoomIn}
+          onClick={() => {
+            handleZoomIn();
+            showNavPod(3000);
+          }}
           className="p-2 rounded-xl hover:bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
           title="Zoom In"
         >
           <ZoomIn className="w-4 h-4" />
         </button>
         <button
-          onClick={handleZoomOut}
+          onClick={() => {
+            handleZoomOut();
+            showNavPod(3000);
+          }}
           className="p-2 rounded-xl hover:bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
           title="Zoom Out"
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
-          onClick={handleResetView}
+          onClick={() => {
+            handleResetView();
+            showNavPod(3000);
+          }}
           className="p-2 rounded-xl hover:bg-neutral-800 text-neutral-300 hover:text-white transition-colors"
           title="Reset Camera View"
         >
           <Compass className="w-4 h-4" />
         </button>
         <button
-          onClick={() => setIsPanMode(!isPanMode)}
+          onClick={() => {
+            setIsPanMode(!isPanMode);
+            showNavPod(3000);
+          }}
           className={`p-2 rounded-xl border transition-all ${
             isPanMode
               ? 'bg-indigo-600 border-indigo-500 text-white'

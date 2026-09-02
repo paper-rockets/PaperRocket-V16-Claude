@@ -76,6 +76,8 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
   onHeaderDragStart,
   rotationAxis,
   onRotationAxisChange,
+  scaleFactor,
+  onScaleCycle,
   onMinimize,
 }) => {
   const [showTargetDropdown, setShowTargetDropdown] = useState(false);
@@ -435,7 +437,7 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
         title="Drag to move navigator"
       />
 
-      {/* Action Buttons: Reset & Minimize */}
+      {/* Action Buttons: Reset, Scale, & Minimize */}
       <div className="flex items-center justify-between gap-1 w-full pt-1 border-t border-white/[0.06]">
         {/* Reset Origin Button */}
         <button
@@ -448,6 +450,23 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
         >
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
+
+        {/* Scale Cycle Button */}
+        {onScaleCycle && (
+          <button
+            id="navigator-btn-scale"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onScaleCycle();
+            }}
+            title={`Scale: ${Math.round((scaleFactor || 1) * 100)}% (Click to cycle size)`}
+            aria-label="Cycle tool scale"
+            className="px-1 py-1 rounded-md text-[9px] font-mono font-bold text-zinc-400 hover:text-white hover:bg-white/10 transition-all duration-150 flex items-center justify-center cursor-pointer select-none"
+          >
+            {Math.round((scaleFactor || 1) * 100)}%
+          </button>
+        )}
 
         {/* Minimize Button */}
         <button

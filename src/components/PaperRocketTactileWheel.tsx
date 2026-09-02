@@ -1069,6 +1069,18 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onWheel={(e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          const delta = -Math.sign(e.deltaY) * 0.05;
+          const next = Math.min(1.4, Math.max(0.55, Math.round((scaleFactor + delta) * 100) / 100));
+          setScaleFactor(next);
+          try {
+            localStorage.setItem('mody_tactile_scale', next.toString());
+          } catch (_) {}
+        }
+      }}
     >
       {/* Left: Main Paper Rocket-Inspired Tactile Circular Disc Body */}
       <div id="paper-rocket-wheel-body" className="overflow-hidden flex items-center justify-center p-2 relative shrink-0">
@@ -1359,6 +1371,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         onCopy={onCopy}
         onPaste={onPaste}
         clipboardCount={clipboardCount}
+        scaleFactor={scaleFactor}
+        onScaleCycle={handleScaleCycle}
         sensitivity={sensitivity}
         onSensitivityChange={(s) => {
           onSensitivityChange?.(s);
@@ -1728,6 +1742,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           {Math.round(scaleFactor * 100)}%
         </div>
       )}
+
+      {/* Invisible Corner Drag Resize Hit Zone - ZERO VISIBLE DOTS */}
+      <div
+        id="paper-rocket-corner-resize-hit-zone"
+        onPointerDown={handleResizeStart}
+        className="absolute -bottom-1 -right-1 w-6 h-6 cursor-nwse-resize z-40 select-none touch-none"
+        title="Drag corner to scale tool"
+        aria-label="Drag corner to scale tool"
+      />
     </aside>
   );
 };
