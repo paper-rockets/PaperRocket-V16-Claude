@@ -19,9 +19,11 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    clearScreen: false,
     server: {
-      host: '0.0.0.0',
+      host: process.env.TAURI_DEV_HOST || '0.0.0.0',
       port: 3000,
+      strictPort: true,
       cors: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',
@@ -31,6 +33,7 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: '0.0.0.0',
       port: 3000,
+      strictPort: true,
       cors: true,
     },
   };

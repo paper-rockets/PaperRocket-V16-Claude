@@ -15,7 +15,7 @@ import { ThreeDimensionalDial } from './ThreeDimensionalDial';
 import { TactileNavigatorDial } from './TactileNavigatorDial';
 import { playHapticSound } from '../../utils/audio';
 
-export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
+export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
   initialMode = '2d',
   isLocked: controlledLocked,
   onLockChange,
@@ -895,3 +895,5 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
     </aside>
   );
 };
+
+export const TransformNavigator = React.memo(TransformNavigatorComponent);

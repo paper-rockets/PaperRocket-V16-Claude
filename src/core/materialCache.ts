@@ -39,6 +39,7 @@ export function normalizeHexColor(hex: string | undefined | null, fallback: stri
  * - Model Canvas Materials: Sculptor clay (0xcdd3dc) and textured mesh with positive depth bias (+2.0)
  */
 export class MaterialCache {
+  private static fallbackWhiteTexture: THREE.CanvasTexture | null = null;
   private cache: Map<string, THREE.Material> = new Map();
 
   /**
@@ -137,18 +138,20 @@ export class MaterialCache {
           } catch (_) {}
         }
         
-        // Use a 2x2 white canvas texture fallback if no texture is provided to safely satisfy sampler2D uniforms
+        // Use a static 2x2 white canvas texture fallback if no texture is provided to safely satisfy sampler2D uniforms
         if (!boundTex) {
-          const canvas = document.createElement('canvas');
-          canvas.width = 2;
-          canvas.height = 2;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, 2, 2);
+          if (!MaterialCache.fallbackWhiteTexture) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2;
+            canvas.height = 2;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, 2, 2);
+            }
+            MaterialCache.fallbackWhiteTexture = new THREE.CanvasTexture(canvas);
           }
-          boundTex = new THREE.CanvasTexture(canvas);
-          boundTex.needsUpdate = true;
+          boundTex = MaterialCache.fallbackWhiteTexture;
         }
 
         const customUniforms: Record<string, any> = {

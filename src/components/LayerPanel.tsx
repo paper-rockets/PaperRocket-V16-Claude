@@ -110,7 +110,7 @@ const COLOR_TAGS = [
   { name: 'pink', color: '#ec4899' },
 ];
 
-export const LayerPanel: React.FC<LayerPanelProps> = ({
+export const LayerPanelComponent: React.FC<LayerPanelProps> = ({
   layers,
   setLayers,
   activeLayerId,
@@ -691,3 +691,5 @@ export const LayerPanel: React.FC<LayerPanelProps> = ({
     </div>
   );
 };
+
+export const LayerPanel = React.memo(LayerPanelComponent);

@@ -10,12 +10,21 @@ import { SmoothingAlgorithm } from '../types';
  * - Direct / None (Raw precision coordinates)
  */
 export class StrokeSmoother {
-  private historyWindow: Array<{ x: number; y: number; pressure: number; time: number }> = [];
-  private lastSmoothed: { x: number; y: number; pressure: number } | null = null;
+  private static readonly MAX_HISTORY = 8;
+  private historyX = new Float32Array(8);
+  private historyY = new Float32Array(8);
+  private historyP = new Float32Array(8);
+  private historyTime = new Float32Array(8);
+  private historyCount = 0;
+  private historyHead = 0;
+
+  private lastSmoothed: { x: number; y: number; pressure: number } = { x: 0, y: 0, pressure: 1.0 };
+  private hasLastSmoothed = false;
 
   public reset(): void {
-    this.historyWindow = [];
-    this.lastSmoothed = null;
+    this.historyCount = 0;
+    this.historyHead = 0;
+    this.hasLastSmoothed = false;
   }
 
   /**
@@ -30,7 +39,10 @@ export class StrokeSmoother {
     timestamp: number = performance.now()
   ): { x: number; y: number; pressure: number } {
     if (algorithm === 'none') {
-      this.lastSmoothed = { x: rawX, y: rawY, pressure };
+      this.lastSmoothed.x = rawX;
+      this.lastSmoothed.y = rawY;
+      this.lastSmoothed.pressure = pressure;
+      this.hasLastSmoothed = true;
       return { x: rawX, y: rawY, pressure };
     }
 
@@ -40,22 +52,32 @@ export class StrokeSmoother {
 
     switch (algorithm) {
       case 'streamline': {
-        this.historyWindow.push({ x: rawX, y: rawY, pressure, time: timestamp });
-        if (this.historyWindow.length > 8) this.historyWindow.shift();
+        const idx = this.historyHead;
+        this.historyX[idx] = rawX;
+        this.historyY[idx] = rawY;
+        this.historyP[idx] = pressure;
+        this.historyTime[idx] = timestamp;
+        this.historyHead = (this.historyHead + 1) % StrokeSmoother.MAX_HISTORY;
+        if (this.historyCount < StrokeSmoother.MAX_HISTORY) {
+          this.historyCount++;
+        }
 
         // Weighted moving average with exponential decay falloff
         let weightSum = 0;
         let sumX = 0;
         let sumY = 0;
         let sumP = 0;
-        const count = this.historyWindow.length;
+        const count = this.historyCount;
         const alpha = 0.3 + (1.0 - Math.min(1.0, Math.max(0.0, strength))) * 0.6;
 
+        // Iterate from oldest to newest
+        const startIdx = (this.historyHead - count + StrokeSmoother.MAX_HISTORY) % StrokeSmoother.MAX_HISTORY;
         for (let i = 0; i < count; i++) {
+          const bufferIdx = (startIdx + i) % StrokeSmoother.MAX_HISTORY;
           const w = Math.pow(alpha, count - 1 - i);
-          sumX += this.historyWindow[i].x * w;
-          sumY += this.historyWindow[i].y * w;
-          sumP += this.historyWindow[i].pressure * w;
+          sumX += this.historyX[bufferIdx] * w;
+          sumY += this.historyY[bufferIdx] * w;
+          sumP += this.historyP[bufferIdx] * w;
           weightSum += w;
         }
 
@@ -66,7 +88,7 @@ export class StrokeSmoother {
       }
 
       case 'exponential': {
-        if (!this.lastSmoothed) {
+        if (!this.hasLastSmoothed) {
           outX = rawX;
           outY = rawY;
           outP = pressure;
@@ -89,7 +111,10 @@ export class StrokeSmoother {
       }
     }
 
-    this.lastSmoothed = { x: outX, y: outY, pressure: outP };
+    this.lastSmoothed.x = outX;
+    this.lastSmoothed.y = outY;
+    this.lastSmoothed.pressure = outP;
+    this.hasLastSmoothed = true;
     return { x: outX, y: outY, pressure: Math.max(0.05, Math.min(1.0, outP)) };
   }
 }

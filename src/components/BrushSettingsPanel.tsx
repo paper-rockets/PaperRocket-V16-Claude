@@ -36,7 +36,7 @@ const QUICK_COLORS = [
   '#f97316', '#f59e0b', '#22c55e', '#10b981', '#ffffff', '#0f172a'
 ];
 
-export const BrushSettingsPanel: React.FC<BrushSettingsPanelProps> = ({
+export const BrushSettingsPanelComponent: React.FC<BrushSettingsPanelProps> = ({
   brushSettings,
   setBrushSettings,
   onClose,
@@ -580,5 +580,7 @@ export const BrushSettingsPanel: React.FC<BrushSettingsPanelProps> = ({
       </div>,
       document.body
     );
-  };
+};
+
+export const BrushSettingsPanel = React.memo(BrushSettingsPanelComponent);
 

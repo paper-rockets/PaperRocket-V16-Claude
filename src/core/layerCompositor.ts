@@ -135,11 +135,11 @@ export class GPULayerCompositor {
     this.height = resolution;
 
     const options: THREE.RenderTargetOptions = {
-      minFilter: THREE.LinearMipmapLinearFilter,
+      minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
-      generateMipmaps: true,
+      generateMipmaps: false,
       colorSpace: THREE.SRGBColorSpace,
     };
 

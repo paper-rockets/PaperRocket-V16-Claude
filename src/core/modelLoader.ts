@@ -70,8 +70,8 @@ export class ModelLoaderService {
 
   constructor() {
     this.dracoLoader = new DRACOLoader();
-    this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-    this.dracoLoader.setDecoderConfig({ type: 'js' });
+    this.dracoLoader.setDecoderPath('/draco/');
+    this.dracoLoader.setDecoderConfig({ type: 'wasm' });
     this.dracoLoader.preload();
 
     this.gltfLoader = new GLTFLoader();

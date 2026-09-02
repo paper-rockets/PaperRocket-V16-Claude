@@ -196,7 +196,7 @@ const PRIMITIVE_ITEMS: PrimitiveItem[] = [
   { id: 'disk', name: 'Disk', icon: Disc },
 ];
 
-export const Toolbar: React.FC<ToolbarProps> = ({
+export const ToolbarComponent: React.FC<ToolbarProps> = ({
   tool,
   setTool,
   brushSettings,
@@ -1867,3 +1867,5 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     </div>
   );
 };
+
+export const Toolbar = React.memo(ToolbarComponent);

@@ -95,7 +95,6 @@ export const Viewport: React.FC<ViewportProps> = ({
   const engineRef = useRef<StudioEngine | null>(null);
   const [engineInstance, setEngineInstance] = useState<StudioEngine | null>(null);
 
-  const [fps, setFps] = useState<number>(60);
   const [metadata, setMetadata] = useState<ModelMetadata | null>(null);
   const [isOrbiting, setIsOrbiting] = useState<boolean>(false);
   const [touchDist, setTouchDist] = useState<number | null>(null);
@@ -138,10 +137,10 @@ export const Viewport: React.FC<ViewportProps> = ({
   const threeFingerInitialFov = useRef<number>(45);
 
   const showGestureToast = (title: string, subtitle?: string) => {
-    setGestureToast({ title, subtitle });
     if (gestureToastTimerRef.current) {
       clearTimeout(gestureToastTimerRef.current);
     }
+    setGestureToast({ title, subtitle });
     gestureToastTimerRef.current = setTimeout(() => {
       setGestureToast(null);
     }, 1800);
@@ -163,7 +162,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     engineRef.current = engine;
     setEngineInstance(engine);
 
-    engine.onFpsUpdate = (f) => setFps(f);
     engine.onMetadataUpdate = (m) => setMetadata(m);
 
     onEngineReady(engine);

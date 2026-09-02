@@ -160,6 +160,7 @@ export class StudioEngine {
   private lastScreenCoords: { x: number; y: number } | null = null;
   private lastCapturePoint: StrokePoint | null = null;
   private isOverAir: boolean = false;
+  private symmetryPointsCache: StrokePoint[][] = [];
 
   // Brush Visual Projection Decal
   private cursorDecal: THREE.Mesh;
@@ -171,12 +172,15 @@ export class StudioEngine {
   private dirLight2: THREE.DirectionalLight;
   private ambientLight: THREE.AmbientLight;
 
-  // Animation & Rendering
+  // Animation & Rendering Loop Optimizations
   private animationFrameId: number | null = null;
   private lastTime: number = performance.now();
   private fps: number = 60;
   private frameCount: number = 0;
   private fpsTimer: number = 0;
+  private isDirty: boolean = true;
+  private loopLightDir: THREE.Vector3 = new THREE.Vector3();
+  private loopResolution: THREE.Vector2 = new THREE.Vector2();
 
   // Transform Joystick & Spatial State
   private transformActiveScope: TransformTargetScope = 'all';
@@ -439,8 +443,8 @@ export class StudioEngine {
   private getDRACOLoader(): DRACOLoader {
     if (!this.dracoLoader) {
       this.dracoLoader = new DRACOLoader();
-      this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-      this.dracoLoader.setDecoderConfig({ type: 'js' });
+      this.dracoLoader.setDecoderPath('/draco/');
+      this.dracoLoader.setDecoderConfig({ type: 'wasm' });
       this.dracoLoader.preload();
     }
     return this.dracoLoader;
@@ -1686,61 +1690,82 @@ export class StudioEngine {
     const symmetryCount = this.getSymmetryCount(symmetry);
     for (let s = 0; s < symmetryCount; s++) {
       const mirroredPoints = this.applySymmetry(this.activePoints, symmetry, s);
-      const geom = this.beadGenerator.generateGeometry(mirroredPoints, settings, this.targetMeshes);
-      
-      if (this.activeStrokeMeshes[s]) {
-        this.activeStrokeMeshes[s].geometry.dispose();
-        this.activeStrokeMeshes[s].geometry = geom;
+      const mesh = this.activeStrokeMeshes[s];
+      if (mesh && mesh.geometry) {
+        this.beadGenerator.updateBufferGeometry(mesh.geometry, mirroredPoints, settings, this.targetMeshes);
       }
     }
+    this.isDirty = true;
   }
 
   /**
-   * Recomputes points according to symmetry mode
+   * Recomputes points according to symmetry mode with zero allocations
    */
   private applySymmetry(points: StrokePoint[], symmetry: SymmetryMode, index: number): StrokePoint[] {
     if (symmetry === 'none' || index === 0) {
       return points;
     }
 
-    return points.map((p) => {
-      const pos = p.position.clone();
-      const norm = p.normal.clone();
+    if (!this.symmetryPointsCache[index]) {
+      this.symmetryPointsCache[index] = [];
+    }
+    const cache = this.symmetryPointsCache[index];
+    while (cache.length < points.length) {
+      cache.push({
+        position: new THREE.Vector3(),
+        normal: new THREE.Vector3(),
+        surfaceOffset: 0.002,
+        pressure: 1.0,
+        time: 0,
+        isSurfaceHit: true,
+      });
+    }
+    cache.length = points.length;
+
+    const total = symmetry === 'radial_4x' ? 4 : symmetry === 'radial_8x' ? 8 : 1;
+    const angle = (index * Math.PI * 2) / total;
+    const yAxis = _pA.set(0, 1, 0);
+
+    for (let i = 0; i < points.length; i++) {
+      const src = points[i];
+      const dst = cache[i];
+      dst.position.copy(src.position);
+      dst.normal.copy(src.normal);
+      dst.surfaceOffset = src.surfaceOffset;
+      dst.pressure = src.pressure;
+      dst.uv = src.uv;
+      dst.hitMeshId = src.hitMeshId;
+      dst.isSurfaceHit = src.isSurfaceHit;
+      dst.time = src.time;
 
       if (symmetry === 'custom_plane' && index === 1) {
         const mirroredPos = LoftGuideEngine.mirrorPointAcrossPlane(
-          pos,
+          dst.position,
           this.customMirrorOrigin,
           this.customMirrorNormal
         );
         const mirroredNorm = LoftGuideEngine.mirrorNormalAcrossPlane(
-          norm,
+          dst.normal,
           this.customMirrorNormal
         );
-        pos.copy(mirroredPos);
-        norm.copy(mirroredNorm);
+        dst.position.copy(mirroredPos);
+        dst.normal.copy(mirroredNorm);
       } else if (symmetry === 'mirror_x') {
-        pos.x = -pos.x;
-        norm.x = -norm.x;
+        dst.position.x = -dst.position.x;
+        dst.normal.x = -dst.normal.x;
       } else if (symmetry === 'mirror_y') {
-        pos.y = -pos.y;
-        norm.y = -norm.y;
+        dst.position.y = -dst.position.y;
+        dst.normal.y = -dst.normal.y;
       } else if (symmetry === 'mirror_z') {
-        pos.z = -pos.z;
-        norm.z = -norm.z;
+        dst.position.z = -dst.position.z;
+        dst.normal.z = -dst.normal.z;
       } else if (symmetry === 'radial_4x' || symmetry === 'radial_8x') {
-        const total = symmetry === 'radial_4x' ? 4 : 8;
-        const angle = (index * Math.PI * 2) / total;
-        pos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-        norm.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        dst.position.applyAxisAngle(yAxis, angle);
+        dst.normal.applyAxisAngle(yAxis, angle);
       }
+    }
 
-      return {
-        ...p,
-        position: pos,
-        normal: norm,
-      };
-    });
+    return cache;
   }
 
   private getSymmetryCount(symmetry: SymmetryMode): number {
@@ -3987,9 +4012,17 @@ export class StudioEngine {
         }
       }
 
-      // Update animated shader effect uniforms (uTime, uLightDirection, uResolution)
-      const lightDir = this.dirLight1 ? this.dirLight1.position.clone().normalize() : undefined;
-      const res = this.container ? new THREE.Vector2(this.container.clientWidth, this.container.clientHeight) : undefined;
+      // Update animated shader effect uniforms (uTime, uLightDirection, uResolution) without per-frame allocations
+      let lightDir: THREE.Vector3 | undefined;
+      if (this.dirLight1) {
+        this.loopLightDir.copy(this.dirLight1.position).normalize();
+        lightDir = this.loopLightDir;
+      }
+      let res: THREE.Vector2 | undefined;
+      if (this.container) {
+        this.loopResolution.set(this.container.clientWidth, this.container.clientHeight);
+        res = this.loopResolution;
+      }
       globalShaderRegistry.update(time * 0.001, lightDir, res);
 
       // Update procedural sky dome
@@ -4005,6 +4038,10 @@ export class StudioEngine {
     };
 
     this.animationFrameId = requestAnimationFrame(loop);
+  }
+
+  public markDirty(): void {
+    this.isDirty = true;
   }
 
   /**

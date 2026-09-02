@@ -50,6 +50,7 @@ import { MobileConnectModal } from './components/MobileConnectModal';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 import { haptics } from './utils/haptics';
 import { setGlobalSoundEnabled } from './utils/audio';
+import { TauriBridge } from './core/tauriBridge';
 import {
   LiquifySettings,
   CustomMirrorConfig,
@@ -540,20 +541,15 @@ export default function App() {
   };
 
   // Full Project State Save (.remix3d JSON file)
-  const handleSaveProject = useCallback(() => {
+  const handleSaveProject = useCallback(async () => {
     if (!engine) return;
     const projectData = engine.exportProjectData('Remix 3D Project', layers);
     const jsonStr = JSON.stringify(projectData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(projectData.name || 'Remix3D_Project').replace(/\s+/g, '_')}_${Date.now()}.remix3d`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    haptics.trigger('success');
+    const filename = `${(projectData.name || 'Remix3D_Project').replace(/\s+/g, '_')}_${Date.now()}.remix3d`;
+    await TauriBridge.saveModelFile(filename, jsonStr, [
+      { name: 'Remix 3D Project', extensions: ['remix3d', 'json'] },
+    ]);
+    TauriBridge.triggerHaptic('success');
   }, [engine, layers]);
 
   // Full Project State Load (.remix3d JSON file)

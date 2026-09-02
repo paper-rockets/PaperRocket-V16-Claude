@@ -25,7 +25,7 @@ interface RenderSettingsPanelProps {
   gpuInfo?: GPUInfo;
 }
 
-export const RenderSettingsPanel: React.FC<RenderSettingsPanelProps> = ({
+export const RenderSettingsPanelComponent: React.FC<RenderSettingsPanelProps> = ({
   settings,
   setSettings,
   onClose,
@@ -357,3 +357,5 @@ export const RenderSettingsPanel: React.FC<RenderSettingsPanelProps> = ({
     </div>
   );
 };
+
+export const RenderSettingsPanel = React.memo(RenderSettingsPanelComponent);

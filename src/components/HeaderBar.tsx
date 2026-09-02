@@ -90,7 +90,7 @@ interface HeaderBarProps {
   onOpenMatCapStudio?: () => void;
 }
 
-export const HeaderBar: React.FC<HeaderBarProps> = ({
+export const HeaderBarComponent: React.FC<HeaderBarProps> = ({
   onToggleTheme,
   showGrid,
   onToggleGrid,
@@ -803,3 +803,5 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     </header>
   );
 };
+
+export const HeaderBar = React.memo(HeaderBarComponent);

@@ -6,34 +6,90 @@ import { WBOITPipeline } from './wboitPipeline';
 /**
  * Post-Processing & Render Modifiers Engine
  *
- * Implements Paper Rocket-style render modes:
+ * Implements high-performance Paper Rocket-style render modes:
  * - Draft Mode: Direct zero-latency hardware rasterization
  * - Render Mode: Multi-effect compositing pass with:
- *   - Bloom / Neon Glow Halo (for self-illuminated glow materials)
+ *   - 2-Pass Downsampled Separable Gaussian Bloom (1/4 resolution, ~95% fillrate reduction)
  *   - Toon / Cel-shading luminance quantization (hard-banded light steps in OKLab)
- *   - Depth of Field (DoF) focal blur tethered to camera orbit fulcrum
+ *   - Optimized Depth of Field (DoF) focal blur tethered to camera orbit fulcrum
  *   - Film Grain & Retro Pixelation Grid
  *   - WBOIT Weighted Blended Order-Independent Transparency
  *   - Locked sRGB swapchains and Linear RGB post-processing calculations
  */
+
+// 1. Bright-pass & Downsample Shader (Extracts HDR / emissive glow fragments)
+const BRIGHT_PASS_VERTEX = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`;
+
+const BRIGHT_PASS_FRAGMENT = `
+  ${OKLAB_FULL_PIPELINE_GLSL}
+  uniform sampler2D tDiffuse;
+  uniform float uBloomThreshold;
+  varying vec2 vUv;
+
+  void main() {
+    vec4 col = texture2D(tDiffuse, vUv);
+    vec3 linear = srgb_to_linear(col.rgb);
+    float brightness = dot(linear, vec3(0.2126, 0.7152, 0.0722));
+    if (brightness > uBloomThreshold || max(linear.r, max(linear.g, linear.b)) > 1.0) {
+      gl_FragColor = vec4(linear, 1.0);
+    } else {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
+  }
+`;
+
+// 2. 1D Separable 9-Tap Gaussian Blur Shader
+const BLUR_1D_FRAGMENT = `
+  uniform sampler2D tInput;
+  uniform vec2 uDirection; // (1/w, 0) for H blur, (0, 1/h) for V blur
+  varying vec2 vUv;
+
+  void main() {
+    vec3 sum = vec3(0.0);
+    // 9-Tap discrete Gaussian kernel weights (sigma ~ 2.5)
+    sum += texture2D(tInput, vUv - uDirection * 4.0).rgb * 0.0162162162;
+    sum += texture2D(tInput, vUv - uDirection * 3.0).rgb * 0.0540540541;
+    sum += texture2D(tInput, vUv - uDirection * 2.0).rgb * 0.1216216216;
+    sum += texture2D(tInput, vUv - uDirection * 1.0).rgb * 0.1945945946;
+    sum += texture2D(tInput, vUv).rgb * 0.2270270270;
+    sum += texture2D(tInput, vUv + uDirection * 1.0).rgb * 0.1945945946;
+    sum += texture2D(tInput, vUv + uDirection * 2.0).rgb * 0.1216216216;
+    sum += texture2D(tInput, vUv + uDirection * 3.0).rgb * 0.0540540541;
+    sum += texture2D(tInput, vUv + uDirection * 4.0).rgb * 0.0162162162;
+    gl_FragColor = vec4(sum, 1.0);
+  }
+`;
+
 export class PostProcessingEngine {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
 
-  // Render targets for multi-pass compositing (sRGB swapchain locked)
+  // Render targets for multi-pass compositing
   private renderTargetA: THREE.WebGLRenderTarget;
-  private renderTargetB: THREE.WebGLRenderTarget;
-  private bloomTarget: THREE.WebGLRenderTarget;
+  private bloomTargetDown: THREE.WebGLRenderTarget;
+  private bloomTargetH: THREE.WebGLRenderTarget;
+  private bloomTargetV: THREE.WebGLRenderTarget;
 
   // WBOIT Transparency Pipeline
   public wboit: WBOITPipeline;
 
-  // Fullscreen Quad for post-processing shaders
-  private postScene: THREE.Scene;
-  private postCamera: THREE.OrthographicCamera;
+  // Fullscreen Quad & Cameras
+  private quadScene: THREE.Scene;
+  private quadCamera: THREE.OrthographicCamera;
+  private quadMesh: THREE.Mesh;
+
+  // Pass materials
+  private brightPassMaterial: THREE.ShaderMaterial;
+  private blurHMaterial: THREE.ShaderMaterial;
+  private blurVMaterial: THREE.ShaderMaterial;
   private postMaterial: THREE.ShaderMaterial;
-  private postQuad: THREE.Mesh;
 
   private settings: PostProcessSettings = {
     renderMode: 'draft',
@@ -66,6 +122,8 @@ export class PostProcessingEngine {
     const pr = renderer.getPixelRatio();
     const w = Math.max(1, Math.floor(width * pr));
     const h = Math.max(1, Math.floor(height * pr));
+    const bw = Math.max(1, Math.floor(w / 4));
+    const bh = Math.max(1, Math.floor(h / 4));
 
     const options: THREE.RenderTargetOptions = {
       minFilter: THREE.LinearFilter,
@@ -77,34 +135,73 @@ export class PostProcessingEngine {
       colorSpace: THREE.SRGBColorSpace,
     };
 
-    this.renderTargetA = new THREE.WebGLRenderTarget(w, h, options);
-    this.renderTargetB = new THREE.WebGLRenderTarget(w, h, options);
-    this.bloomTarget = new THREE.WebGLRenderTarget(Math.floor(w / 2), Math.floor(h / 2), {
-      ...options,
+    const bloomOptions: THREE.RenderTargetOptions = {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
       type: THREE.HalfFloatType,
-    });
+      stencilBuffer: false,
+      depthBuffer: false,
+    };
 
-    // Initialize WBOIT Order-Independent Transparency Pipeline
+    this.renderTargetA = new THREE.WebGLRenderTarget(w, h, options);
+    this.bloomTargetDown = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+    this.bloomTargetH = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+    this.bloomTargetV = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+
     this.wboit = new WBOITPipeline(renderer, width, height);
 
-    // Fullscreen quad setup
-    this.postScene = new THREE.Scene();
-    this.postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.quadScene = new THREE.Scene();
+    this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+    // 1. Bright Pass Material
+    this.brightPassMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        uBloomThreshold: { value: 0.85 },
+      },
+      vertexShader: BRIGHT_PASS_VERTEX,
+      fragmentShader: BRIGHT_PASS_FRAGMENT,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    // 2. Horizontal Blur Material
+    this.blurHMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        tInput: { value: null },
+        uDirection: { value: new THREE.Vector2(1.0 / bw, 0.0) },
+      },
+      vertexShader: BRIGHT_PASS_VERTEX,
+      fragmentShader: BLUR_1D_FRAGMENT,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    // 3. Vertical Blur Material
+    this.blurVMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        tInput: { value: null },
+        uDirection: { value: new THREE.Vector2(0.0, 1.0 / bh) },
+      },
+      vertexShader: BRIGHT_PASS_VERTEX,
+      fragmentShader: BLUR_1D_FRAGMENT,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    // 4. Main Compositing Material
     this.postMaterial = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null },
-        tDepth: { value: null },
+        tBloom: { value: null },
         uResolution: { value: new THREE.Vector2(w, h) },
         uTime: { value: 0.0 },
-        // Render Settings
-        uRenderMode: { value: 0 }, // 0: draft, 1: render
+        uRenderMode: { value: 0 },
         uToonShading: { value: false },
         uToonSteps: { value: 3.0 },
         uBloom: { value: true },
         uBloomIntensity: { value: 1.2 },
-        uBloomThreshold: { value: 0.85 },
-        uBloomRadius: { value: 0.8 },
         uDoF: { value: false },
         uFocusDistance: { value: 2.5 },
         uAperture: { value: 0.015 },
@@ -112,20 +209,13 @@ export class PostProcessingEngine {
         uGrainIntensity: { value: 0.08 },
         uPixelation: { value: false },
         uPixelSize: { value: 4.0 },
-        uCameraNear: { value: 0.1 },
-        uCameraFar: { value: 2000.0 },
       },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
-        }
-      `,
+      vertexShader: BRIGHT_PASS_VERTEX,
       fragmentShader: `
         ${OKLAB_FULL_PIPELINE_GLSL}
 
         uniform sampler2D tDiffuse;
+        uniform sampler2D tBloom;
         uniform vec2 uResolution;
         uniform float uTime;
         uniform int uRenderMode;
@@ -133,8 +223,6 @@ export class PostProcessingEngine {
         uniform float uToonSteps;
         uniform bool uBloom;
         uniform float uBloomIntensity;
-        uniform float uBloomThreshold;
-        uniform float uBloomRadius;
         uniform bool uDoF;
         uniform float uFocusDistance;
         uniform float uAperture;
@@ -145,7 +233,6 @@ export class PostProcessingEngine {
 
         varying vec2 vUv;
 
-        // Pseudo-random noise
         float rand(vec2 co) {
           return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
         }
@@ -170,51 +257,28 @@ export class PostProcessingEngine {
           // Convert to Linear RGB for physical post-processing calculations
           vec3 linearColor = srgb_to_linear(baseColor.rgb);
 
-          // 2. Depth of Field (DoF) / Bokeh Blur
+          // 2. Depth of Field (DoF) / Bokeh Blur (Fast 4-Tap Radial Jitter)
           if (uDoF) {
             vec2 blurDir = (uv - vec2(0.5));
             float distFromCenter = length(blurDir);
-            float blurAmount = clamp(abs(distFromCenter - 0.3) * uAperture * 30.0, 0.0, 0.015);
-
-            vec3 blurred = vec3(0.0);
-            float totalWeight = 0.0;
-            for (int x = -2; x <= 2; x++) {
-              for (int y = -2; y <= 2; y++) {
-                vec2 offset = vec2(float(x), float(y)) * blurAmount;
-                float weight = 1.0 / (1.0 + length(vec2(x, y)));
-                blurred += srgb_to_linear(texture2D(tDiffuse, uv + offset).rgb) * weight;
-                totalWeight += weight;
-              }
+            float blurAmount = clamp(abs(distFromCenter - 0.3) * uAperture * 20.0, 0.0, 0.01);
+            if (blurAmount > 0.0005) {
+              vec3 blurred = linearColor * 0.4;
+              blurred += srgb_to_linear(texture2D(tDiffuse, uv + vec2(blurAmount, blurAmount)).rgb) * 0.15;
+              blurred += srgb_to_linear(texture2D(tDiffuse, uv + vec2(-blurAmount, blurAmount)).rgb) * 0.15;
+              blurred += srgb_to_linear(texture2D(tDiffuse, uv + vec2(blurAmount, -blurAmount)).rgb) * 0.15;
+              blurred += srgb_to_linear(texture2D(tDiffuse, uv + vec2(-blurAmount, -blurAmount)).rgb) * 0.15;
+              linearColor = blurred;
             }
-            linearColor = blurred / totalWeight;
           }
 
-          // 3. Bloom / Emissive Halo Sampling in Linear Space
+          // 3. Bloom Additive Composite (from 2-pass separable 1/4 res target)
           if (uBloom) {
-            vec3 bloomSum = vec3(0.0);
-            float stepScale = uBloomRadius * 4.0;
-            float bWeight = 0.0;
-
-            for (int i = -3; i <= 3; i++) {
-              for (int j = -3; j <= 3; j++) {
-                vec2 bOffset = vec2(float(i), float(j)) * (stepScale / uResolution);
-                vec3 sampleColor = srgb_to_linear(texture2D(tDiffuse, uv + bOffset).rgb);
-                float brightness = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
-                if (brightness > uBloomThreshold || max(sampleColor.r, max(sampleColor.g, sampleColor.b)) > 1.0) {
-                  float w = 1.0 / (1.0 + float(i*i + j*j));
-                  bloomSum += sampleColor * w;
-                  bWeight += w;
-                }
-              }
-            }
-
-            if (bWeight > 0.0) {
-              vec3 bloom = (bloomSum / bWeight) * uBloomIntensity;
-              linearColor += bloom;
-            }
+            vec3 bloomSample = texture2D(tBloom, uv).rgb;
+            linearColor += bloomSample * uBloomIntensity;
           }
 
-          // 4. Toon / Cel Shading Quantization (Perceptually Uniform in OKLab)
+          // 4. Toon / Cel Shading Quantization in OKLab
           if (uToonShading) {
             vec3 oklab = linear_srgb_to_oklab(linearColor);
             float steppedL = floor(oklab.x * uToonSteps + 0.5) / uToonSteps;
@@ -228,7 +292,6 @@ export class PostProcessingEngine {
             linearColor += vec3(noise);
           }
 
-          // Output back to locked sRGB swapchain
           gl_FragColor = vec4(linear_to_srgb(clamp(linearColor, 0.0, 1.0)), baseColor.a);
         }
       `,
@@ -236,19 +299,25 @@ export class PostProcessingEngine {
       depthWrite: false,
     });
 
-    this.postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMaterial);
-    this.postScene.add(this.postQuad);
+    this.quadMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMaterial);
+    this.quadScene.add(this.quadMesh);
   }
 
   public setSize(width: number, height: number): void {
     const pr = this.renderer.getPixelRatio();
     const w = Math.max(1, Math.floor(width * pr));
     const h = Math.max(1, Math.floor(height * pr));
+    const bw = Math.max(1, Math.floor(w / 4));
+    const bh = Math.max(1, Math.floor(h / 4));
 
     this.renderTargetA.setSize(w, h);
-    this.renderTargetB.setSize(w, h);
-    this.bloomTarget.setSize(Math.floor(w / 2), Math.floor(h / 2));
+    this.bloomTargetDown.setSize(bw, bh);
+    this.bloomTargetH.setSize(bw, bh);
+    this.bloomTargetV.setSize(bw, bh);
     this.wboit.setSize(width, height);
+
+    this.blurHMaterial.uniforms.uDirection.value.set(1.0 / bw, 0.0);
+    this.blurVMaterial.uniforms.uDirection.value.set(0.0, 1.0 / bh);
     this.postMaterial.uniforms.uResolution.value.set(w, h);
   }
 
@@ -261,8 +330,8 @@ export class PostProcessingEngine {
     u.uToonSteps.value = this.settings.toonSteps;
     u.uBloom.value = this.settings.bloom;
     u.uBloomIntensity.value = this.settings.bloomIntensity;
-    u.uBloomRadius.value = this.settings.bloomRadius;
-    u.uBloomThreshold.value = this.settings.bloomThreshold;
+    this.brightPassMaterial.uniforms.uBloomThreshold.value = this.settings.bloomThreshold;
+
     u.uDoF.value = this.settings.dof;
     u.uFocusDistance.value = this.settings.dofFocusDistance;
     u.uAperture.value = this.settings.dofAperture;
@@ -277,35 +346,68 @@ export class PostProcessingEngine {
   }
 
   /**
-   * Main render loop call
+   * Main render loop call:
+   * 1. If Draft Mode, renders scene directly to default framebuffer.
+   * 2. If Render Mode:
+   *    a. Renders scene to full-resolution renderTargetA.
+   *    b. If Bloom is enabled:
+   *       - Extracts bright pass to 1/4 resolution bloomTargetDown.
+   *       - Horizontal Gaussian blur to bloomTargetH.
+   *       - Vertical Gaussian blur to bloomTargetV.
+   *    c. Composites all passes onto the screen quad in a single final shader step.
    */
   public render(time: number = 0): void {
     if (this.settings.renderMode === 'draft') {
-      // Draft Mode: Direct hardware rendering to screen
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
       return;
     }
 
-    // Render Mode: Render scene to renderTargetA first
+    // Pass 1: Render 3D scene to full-res target A
     this.renderer.setRenderTarget(this.renderTargetA);
     this.renderer.render(this.scene, this.camera);
 
-    // Apply Post-Processing Shader Pass to screen
+    // Pass 2: Bloom downsample & 2-pass separable blur (1/4 resolution)
+    if (this.settings.bloom) {
+      // 2a. Bright Pass & Downsample (TargetA -> bloomTargetDown)
+      this.quadMesh.material = this.brightPassMaterial;
+      this.brightPassMaterial.uniforms.tDiffuse.value = this.renderTargetA.texture;
+      this.renderer.setRenderTarget(this.bloomTargetDown);
+      this.renderer.render(this.quadScene, this.quadCamera);
+
+      // 2b. Horizontal Blur (bloomTargetDown -> bloomTargetH)
+      this.quadMesh.material = this.blurHMaterial;
+      this.blurHMaterial.uniforms.tInput.value = this.bloomTargetDown.texture;
+      this.renderer.setRenderTarget(this.bloomTargetH);
+      this.renderer.render(this.quadScene, this.quadCamera);
+
+      // 2c. Vertical Blur (bloomTargetH -> bloomTargetV)
+      this.quadMesh.material = this.blurVMaterial;
+      this.blurVMaterial.uniforms.tInput.value = this.bloomTargetH.texture;
+      this.renderer.setRenderTarget(this.bloomTargetV);
+      this.renderer.render(this.quadScene, this.quadCamera);
+    }
+
+    // Pass 3: Final Composite to Screen
+    this.quadMesh.material = this.postMaterial;
     this.postMaterial.uniforms.tDiffuse.value = this.renderTargetA.texture;
+    this.postMaterial.uniforms.tBloom.value = this.settings.bloom ? this.bloomTargetV.texture : null;
     this.postMaterial.uniforms.uTime.value = time;
-    this.postMaterial.uniforms.uCameraNear.value = this.camera.near;
-    this.postMaterial.uniforms.uCameraFar.value = this.camera.far;
 
     this.renderer.setRenderTarget(null);
-    this.renderer.render(this.postScene, this.postCamera);
+    this.renderer.render(this.quadScene, this.quadCamera);
   }
 
   public dispose(): void {
     this.renderTargetA.dispose();
-    this.renderTargetB.dispose();
-    this.bloomTarget.dispose();
+    this.bloomTargetDown.dispose();
+    this.bloomTargetH.dispose();
+    this.bloomTargetV.dispose();
+    this.brightPassMaterial.dispose();
+    this.blurHMaterial.dispose();
+    this.blurVMaterial.dispose();
     this.postMaterial.dispose();
-    this.postQuad.geometry.dispose();
+    this.quadMesh.geometry.dispose();
   }
 }
+

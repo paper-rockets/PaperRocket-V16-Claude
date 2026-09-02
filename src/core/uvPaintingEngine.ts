@@ -23,7 +23,7 @@ export class UVPaintingEngine {
   // Per-layer offscreen canvas textures
   private layerCanvases: Map<string, LayerCanvasEntry> = new Map();
   private layerHistory: Map<string, { stack: ImageData[]; index: number }> = new Map();
-  private maxHistory: number = 25;
+  private maxHistory: number = 8;
 
   // GPU Compositing Engine
   private gpuCompositor: GPULayerCompositor;
@@ -328,6 +328,21 @@ export class UVPaintingEngine {
     geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   }
 
+  private isCompositeScheduled: boolean = false;
+
+  private requestComposite(): void {
+    if (this.isCompositeScheduled) return;
+    this.isCompositeScheduled = true;
+    requestAnimationFrame(() => {
+      this.isCompositeScheduled = false;
+      const activeEntry = this.layerCanvases.get(this.activeLayerId);
+      if (activeEntry) {
+        activeEntry.texture.needsUpdate = true;
+      }
+      this.compositeLayers();
+    });
+  }
+
   /**
    * Start a stroke on UV coordinate
    */
@@ -341,7 +356,7 @@ export class UVPaintingEngine {
   }
 
   /**
-   * Interpolate paint along UV coordinates
+   * Interpolate paint along UV coordinates with rAF-batched GPU uploads
    */
   public paintTo(uv: THREE.Vector2, settings: BrushSettings, pressure: number = 1.0): void {
     if (!this.isDrawing) {
@@ -380,12 +395,11 @@ export class UVPaintingEngine {
     }
 
     this.lastUV.copy(uv);
-    activeEntry.texture.needsUpdate = true;
-    this.compositeLayers();
+    this.requestComposite();
   }
 
   /**
-   * Paint a single stamp at UV coordinate
+   * Paint a single stamp at UV coordinate with rAF-batched GPU uploads
    */
   public paintStamp(uv: THREE.Vector2, settings: BrushSettings, pressure: number = 1.0): void {
     const px = uv.x * this.width;
@@ -395,8 +409,7 @@ export class UVPaintingEngine {
 
     const activeEntry = this.getOrCreateLayerEntry(this.activeLayerId);
     this.renderBrushAtPixel(activeEntry.ctx, px, py, radius, settings);
-    activeEntry.texture.needsUpdate = true;
-    this.compositeLayers();
+    this.requestComposite();
   }
 
   /**
@@ -470,6 +483,11 @@ export class UVPaintingEngine {
     if (this.isDrawing) {
       this.isDrawing = false;
       this.lastUV = null;
+      const activeEntry = this.layerCanvases.get(this.activeLayerId);
+      if (activeEntry) {
+        activeEntry.texture.needsUpdate = true;
+      }
+      this.compositeLayers();
       this.saveLayerState(this.activeLayerId);
     }
   }
