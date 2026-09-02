@@ -1,5 +1,5 @@
-// Remix 3D Studio - Service Worker for PWA & Offline Support
-const CACHE_NAME = 'remix3d-v14-cache-v1';
+// Remix 3D Studio - Service Worker for PWA & Fast Updates
+const CACHE_NAME = `remix3d-v14-${Date.now()}`;
 
 const STATIC_PRECACHE = [
   './',
@@ -14,12 +14,13 @@ const STATIC_PRECACHE = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_PRECACHE).catch((err) => {
-        console.warn('[SW] Pre-caching error (non-fatal):', err);
+        console.warn('[SW] Pre-caching notice:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -29,7 +30,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[SW] Removing old cache:', key);
+            console.log('[SW] Purging stale cache:', key);
             return caches.delete(key);
           }
         })
@@ -51,51 +52,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: Network-first with cache fallback
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          }
-          return response;
-        })
-        .catch(() => {
-          return caches.match('./index.html') || caches.match('./');
-        })
-    );
-    return;
-  }
-
-  // Assets (JS, CSS, Images, Draco, Fonts): Cache-first with network background update
+  // Network-First for HTML, Scripts, and Styles (Ensures tablet gets latest code immediately)
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch fresh copy in background to keep cache up to date
-        fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, networkResponse));
-            }
-          })
-          .catch(() => {});
-        return cachedResponse;
-      }
-
-      return fetch(request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type === 'opaque') {
-            return networkResponse;
+    fetch(request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        // Fallback to cache when offline
+        return caches.match(request).then((cached) => {
+          if (cached) return cached;
+          if (request.mode === 'navigate') {
+            return caches.match('./index.html') || caches.match('./');
           }
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
-          return networkResponse;
-        })
-        .catch((err) => {
-          console.warn('[SW] Fetch failed for:', request.url, err);
         });
-    })
+      })
   );
 });

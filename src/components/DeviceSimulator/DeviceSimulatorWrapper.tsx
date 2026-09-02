@@ -154,12 +154,18 @@ export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
       if (port === '3001') return 's6lite';
       if (port === '3002') return 's25ultra';
 
-      // If running on a touch/mobile device or in standalone PWA, default to fullscreen direct view
+      // If running on an actual tablet, phone, touch device, or standalone PWA, default to fullscreen direct view
       if (isStandalonePWA()) {
         return 'fullscreen';
       }
-      const isMobileScreen = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1024;
-      if (isMobileScreen) {
+      const isTouchDevice =
+        'ontouchstart' in window ||
+        (typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0 || (navigator as any).msMaxTouchPoints > 0));
+      const isMobileOrTabletUA =
+        typeof navigator !== 'undefined' &&
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Tablet|Silk/i.test(navigator.userAgent);
+
+      if (isTouchDevice || isMobileOrTabletUA) {
         return 'fullscreen';
       }
     }
