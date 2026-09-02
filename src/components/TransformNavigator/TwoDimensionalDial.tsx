@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Move,
@@ -71,6 +71,61 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
   // -------------------------------------------------------------
   // 1. Central Move Stick Drag Handlers (Elastic & Normalized Vector)
   // -------------------------------------------------------------
+  // Hold the stick in a direction and the object keeps gliding that way.
+  // Speed comes from how far the stick is pushed, so it behaves like the
+  // spring-back visual has always implied.
+  const MOVE_PX_PER_SEC = 700; // screen px/sec at full deflection
+  const MOVE_DEADZONE = 0.08; // ignore a stick resting slightly off centre
+  const MOVE_CURVE = 2; // fine control near centre, speed at the rim
+  const MOVE_MAX_DT = 0.05; // clamp dt so a stalled frame cannot teleport
+
+  const stickVelRef = useRef({ nx: 0, ny: 0 });
+  const stickRafRef = useRef<number | null>(null);
+  const stickLastTRef = useRef(0);
+
+  const stopStickGlide = () => {
+    if (stickRafRef.current !== null) {
+      cancelAnimationFrame(stickRafRef.current);
+      stickRafRef.current = null;
+    }
+    stickVelRef.current = { nx: 0, ny: 0 };
+  };
+
+  // Never leave a loop running if the component unmounts mid-hold
+  useEffect(() => stopStickGlide, []);
+
+  const stickTick = (t: number) => {
+    const dt = Math.min(MOVE_MAX_DT, (t - stickLastTRef.current) / 1000);
+    stickLastTRef.current = t;
+
+    const { nx, ny } = stickVelRef.current;
+    const mag = Math.hypot(nx, ny);
+
+    if (mag > MOVE_DEADZONE) {
+      // Curve the response, then convert to screen px for this frame
+      const curved = Math.pow(mag, MOVE_CURVE) / mag;
+      const px = MOVE_PX_PER_SEC * dt;
+
+      onTranslate?.({
+        x: nx,
+        y: ny,
+        z: 0,
+        normalizedX: nx,
+        normalizedY: ny,
+        normalizedZ: 0,
+        deltaX: nx * curved * px,
+        // translateScreenSpace expects screen coords (Y down = positive),
+        // while ny is up-positive - so negate here or vertical inverts
+        deltaY: -ny * curved * px,
+        deltaZ: 0,
+        source: '2d-move-stick',
+        timestamp: Date.now(),
+      });
+    }
+
+    stickRafRef.current = requestAnimationFrame(stickTick);
+  };
+
   const handleStickPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isLocked) {
       haptics.trigger('lock');
@@ -80,12 +135,15 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
     e.currentTarget.setPointerCapture(e.pointerId);
 
     stickDragOriginRef.current = { clientX: e.clientX, clientY: e.clientY };
-    stickPrevRef.current = { clientX: e.clientX, clientY: e.clientY };
     setIsStickDragging(true);
     hitBoundaryRef.current = false;
     setActiveHandle('move');
     haptics.trigger('light');
     onInteractionStart?.('move');
+
+    stickVelRef.current = { nx: 0, ny: 0 };
+    stickLastTRef.current = performance.now();
+    stickRafRef.current = requestAnimationFrame(stickTick);
   };
 
   const handleStickPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -94,10 +152,6 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
 
     const rawDx = e.clientX - stickDragOriginRef.current.clientX;
     const rawDy = e.clientY - stickDragOriginRef.current.clientY;
-
-    const stepDx = e.clientX - (stickPrevRef.current ? stickPrevRef.current.clientX : e.clientX);
-    const stepDy = e.clientY - (stickPrevRef.current ? stickPrevRef.current.clientY : e.clientY);
-    stickPrevRef.current = { clientX: e.clientX, clientY: e.clientY };
 
     const rawDistance = Math.hypot(rawDx, rawDy);
     const maxBound = 48; // Boundary radius for pure travel
@@ -116,26 +170,11 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
 
     setStickPos({ x: clampedX, y: clampedY });
 
-    // Normalized vector in [-1, 1] range
-    const maxNormalizedRadius = 60;
-    const normalizedX = Number((clampedX / maxNormalizedRadius).toFixed(4));
-    const normalizedY = Number((-clampedY / maxNormalizedRadius).toFixed(4)); // Invert Y for screen up = positive
-
-    const payload: TranslationEventPayload = {
-      x: normalizedX,
-      y: normalizedY,
-      z: 0,
-      normalizedX,
-      normalizedY,
-      normalizedZ: 0,
-      deltaX: stepDx,
-      deltaY: -stepDy,
-      deltaZ: 0,
-      source: '2d-move-stick',
-      timestamp: Date.now(),
+    // Record where the stick is. The rAF loop turns this into motion.
+    stickVelRef.current = {
+      nx: Math.max(-1, Math.min(1, clampedX / maxBound)),
+      ny: Math.max(-1, Math.min(1, -clampedY / maxBound)), // screen up = positive
     };
-
-    onTranslate?.(payload);
   };
 
   const handleStickPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -147,6 +186,8 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
       // ignore
     }
 
+    stopStickGlide();
+
     setIsStickDragging(false);
     stickDragOriginRef.current = null;
     stickPrevRef.current = null;
@@ -157,21 +198,6 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
 
     // Elastic snap back to origin
     setStickPos({ x: 0, y: 0 });
-
-    const snapPayload: TranslationEventPayload = {
-      x: 0,
-      y: 0,
-      z: 0,
-      normalizedX: 0,
-      normalizedY: 0,
-      normalizedZ: 0,
-      deltaX: 0,
-      deltaY: 0,
-      deltaZ: 0,
-      source: '2d-move-stick-snap',
-      timestamp: Date.now(),
-    };
-    onTranslate?.(snapPayload);
   };
 
   // -------------------------------------------------------------
@@ -400,24 +426,35 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
       ref={containerRef}
       className="relative w-[230px] h-[230px] mx-auto flex items-center justify-center select-none"
     >
-      {/* Background Radar Dial & Grid Guides */}
+      {/* Background Radar Dial & Grid Guides with Chamfered Dish Depth Illusion */}
       <motion.div
         initial={{ scale: 0.92, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 350, damping: 26 }}
-        className="absolute inset-0 rounded-full bg-[#131315] border border-white/10 shadow-inner flex items-center justify-center overflow-hidden"
+        className="absolute inset-0 rounded-full flex items-center justify-center overflow-hidden"
+        style={{
+          background: 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
+          boxShadow:
+            'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
+          border: '1px solid rgba(255,255,255,0.09)',
+        }}
       >
-        {/* Subtle Radial Gradient */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.04)_0%,transparent_75%)]" />
+        {/* Subtle Specular Top Arc Reflection for 3D Beveled Lip */}
+        <div
+          className="absolute inset-0 rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
+          }}
+        />
 
-        {/* Outer Circular Reference Ring */}
-        <div className="absolute w-[86%] h-[86%] rounded-full border border-dashed border-white/15" />
+        {/* Outer Circular Reference Ring with Recessed Groove Shadow */}
+        <div className="absolute w-[86%] h-[86%] rounded-full border border-dashed border-white/15 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]" />
 
-        {/* Mid Circular Reference Ring */}
-        <div className="absolute w-[62%] h-[62%] rounded-full border border-white/10" />
+        {/* Mid Circular Reference Ring with Rim Highlight */}
+        <div className="absolute w-[62%] h-[62%] rounded-full border border-white/10 shadow-[0_1px_2px_rgba(255,255,255,0.04)]" />
 
-        {/* Inner Boundary Ring */}
-        <div className="absolute w-[44%] h-[44%] rounded-full border border-dashed border-white/10" />
+        {/* Inner Boundary Dish Groove */}
+        <div className="absolute w-[44%] h-[44%] rounded-full border border-dashed border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]" />
 
         {/* Center Crosshair Lines */}
         <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent" />
@@ -500,8 +537,8 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         id="handle-2d-scale-y"
         role="button"
         tabIndex={0}
-        aria-label="Vertical Height Scale Handle"
-        title="Scale Height (Y-Axis)"
+        aria-label="Stretch Height (Y-Axis)"
+        title="Stretch Height (Y-Axis) - Drag up/down to stretch or squash"
         style={{
           top: '13%',
           left: '50%',
@@ -539,8 +576,8 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         id="handle-2d-scale-x"
         role="button"
         tabIndex={0}
-        aria-label="Horizontal Width Scale Handle"
-        title="Scale Width (X-Axis)"
+        aria-label="Stretch Width (X-Axis)"
+        title="Stretch Width (X-Axis) - Drag left/right to stretch or squash"
         style={{
           top: '50%',
           left: '13%',
@@ -578,8 +615,8 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         id="handle-2d-scale-uniform"
         role="button"
         tabIndex={0}
-        aria-label="Uniform Free Scale Handle"
-        title="Scale Uniform / Free"
+        aria-label="Scale Uniform (All Dimensions)"
+        title="Scale Uniform - Drag diagonally to scale proportionally"
         style={{
           top: '23%',
           left: '23%',

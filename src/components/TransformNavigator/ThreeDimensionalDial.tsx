@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Orbit } from 'lucide-react';
+import { Orbit, Maximize2 } from 'lucide-react';
 import {
   AccessibilityMode,
   TranslationEventPayload,
   RotationEventPayload,
+  ScaleEventPayload,
 } from '../../types';
 import {
   computeTrackballRotation,
@@ -18,6 +19,7 @@ interface ThreeDimensionalDialProps {
   accessibilityMode: AccessibilityMode;
   onTranslate?: (data: TranslationEventPayload) => void;
   onRotate?: (data: RotationEventPayload) => void;
+  onScale?: (data: ScaleEventPayload) => void;
   onInteractionStart?: (handleName: string) => void;
   onInteractionEnd?: (handleName: string) => void;
 }
@@ -27,6 +29,7 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
   accessibilityMode,
   onTranslate,
   onRotate,
+  onScale,
   onInteractionStart,
   onInteractionEnd,
 }) => {
@@ -56,14 +59,17 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
     lastAngle: number;
   } | null>(null);
 
-  // Translation node continuous repeat timer or drag
-  const translationDragOriginRef = useRef<{
+  // Hold-to-glide translation state
+  const glideRef = useRef<{
     nodeId: string;
     axis: 'x' | 'y' | 'z';
     direction: 1 | -1;
-    clientX: number;
-    clientY: number;
+    start: number;
+    last: number;
   } | null>(null);
+  const glideRafRef = useRef<number | null>(null);
+  const glideDetentRef = useRef(0);
+  const trackballDetentRef = useRef(0);
 
   const [nodeActiveState, setNodeActiveState] = useState<string | null>(null);
 
@@ -108,9 +114,11 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
 
     const rotDelta = computeTrackballRotation(deltaX, deltaY, 0.35);
 
-    // Subtle tactile tick during continuous trackball roll
-    if (Math.hypot(deltaX, deltaY) > 2) {
-      haptics.trigger('light', 65);
+    // Tick per distance rolled, not per event, so it reads as detents not a buzz
+    trackballDetentRef.current += Math.hypot(deltaX, deltaY);
+    if (trackballDetentRef.current >= 26) {
+      trackballDetentRef.current = 0;
+      haptics.trigger('detent', 45);
     }
 
     const payload: RotationEventPayload = {
@@ -151,6 +159,49 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
   // -------------------------------------------------------------
   // 2. Translation Nodes (+Y, -Y, +X, -X, +Z, -Z)
   // -------------------------------------------------------------
+  // Press and hold a direction node to glide continuously.
+  // The ramp means a quick tap still yields a small, precise step.
+  const NODE_UNITS_PER_SEC = 1.1; // world units per second at full glide
+  const NODE_RAMP_SEC = 0.18; // ease-in time from step to full glide
+  const NODE_MAX_DT = 0.05; // clamp dt so a stalled frame cannot teleport
+  const NODE_DETENT_UNITS = 0.12; // haptic tick per this much travel
+
+  const stopNodeGlide = () => {
+    if (glideRafRef.current !== null) {
+      cancelAnimationFrame(glideRafRef.current);
+      glideRafRef.current = null;
+    }
+    glideRef.current = null;
+    glideDetentRef.current = 0;
+  };
+
+  // Never leave a loop running if the component unmounts mid-hold
+  useEffect(() => stopNodeGlide, []);
+
+  const glideTick = (t: number) => {
+    const g = glideRef.current;
+    if (!g) return;
+
+    const dt = Math.min(NODE_MAX_DT, (t - g.last) / 1000);
+    g.last = t;
+
+    // Time-based, so speed is identical on 60Hz and 120Hz screens
+    const held = (t - g.start) / 1000;
+    const ramp = Math.min(1, held / NODE_RAMP_SEC);
+    const amount = g.direction * NODE_UNITS_PER_SEC * ramp * dt;
+
+    emitTranslation(g.axis, amount, 0, g.nodeId);
+
+    // Tick per distance travelled rather than per frame
+    glideDetentRef.current += Math.abs(amount);
+    if (glideDetentRef.current >= NODE_DETENT_UNITS) {
+      glideDetentRef.current = 0;
+      haptics.trigger('detent', 45);
+    }
+
+    glideRafRef.current = requestAnimationFrame(glideTick);
+  };
+
   const handleNodePointerDown = (
     e: React.PointerEvent<HTMLButtonElement>,
     nodeId: string,
@@ -164,44 +215,15 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
 
-    translationDragOriginRef.current = {
-      nodeId,
-      axis,
-      direction,
-      clientX: e.clientX,
-      clientY: e.clientY,
-    };
-
     setNodeActiveState(nodeId);
     setActiveHandle(nodeId);
     haptics.trigger('medium');
     onInteractionStart?.(nodeId);
 
-    // Initial nudge step translation
-    emitTranslation(axis, direction * 0.1, 0, nodeId);
-  };
-
-  const handleNodePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!translationDragOriginRef.current || !nodeActiveState) return;
-    e.preventDefault();
-
-    const { nodeId, axis, direction, clientX, clientY } = translationDragOriginRef.current;
-    const rawDx = e.clientX - clientX;
-    const rawDy = e.clientY - clientY;
-
-    let dragAmount = 0;
-    if (axis === 'y') {
-      dragAmount = -rawDy * 0.05 * direction;
-    } else if (axis === 'x') {
-      dragAmount = rawDx * 0.05 * direction;
-    } else if (axis === 'z') {
-      dragAmount = (rawDx - rawDy) * 0.035 * direction;
-    }
-
-    if (Math.abs(dragAmount) > 0.01) {
-      haptics.trigger('light', 60);
-      emitTranslation(axis, dragAmount, axis === 'x' ? rawDx : rawDy, nodeId);
-    }
+    const now = performance.now();
+    glideRef.current = { nodeId, axis, direction, start: now, last: now };
+    glideDetentRef.current = 0;
+    glideRafRef.current = requestAnimationFrame(glideTick);
   };
 
   const handleNodePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -213,12 +235,92 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
       // ignore
     }
 
+    stopNodeGlide();
+
     const currentId = nodeActiveState;
     setNodeActiveState(null);
     setActiveHandle(null);
-    translationDragOriginRef.current = null;
     haptics.trigger('light');
     onInteractionEnd?.(currentId);
+  };
+
+  // -------------------------------------------------------------
+  // 2b. Uniform Resize Handle
+  // Log-linear: drag up 110px = 2x, down 110px = 0.5x.
+  // Derived from total displacement (not compounded per event) so the
+  // result is identical whether dragged fast or slow, and dragging back
+  // returns to exactly the starting size.
+  // -------------------------------------------------------------
+  const SIZE_LOG_PER_PX = Math.LN2 / 110;
+  const SIZE_MIN = 0.1;
+  const SIZE_MAX = 10;
+
+  const scaleStartYRef = useRef<number | null>(null);
+  const scaleAppliedRef = useRef(1);
+  const scaleDetentRef = useRef(1);
+  const [scaleOffsetY, setScaleOffsetY] = useState(0);
+
+  const handleScalePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isLocked) {
+      haptics.trigger('lock');
+      return;
+    }
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+
+    scaleStartYRef.current = e.clientY;
+    scaleAppliedRef.current = 1;
+    scaleDetentRef.current = 1;
+    setActiveHandle('scale-uniform');
+    haptics.trigger('medium');
+    onInteractionStart?.('scale-uniform');
+  };
+
+  const handleScalePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeHandle !== 'scale-uniform' || scaleStartYRef.current === null) return;
+    e.preventDefault();
+
+    const totalDy = e.clientY - scaleStartYRef.current;
+    setScaleOffsetY(Math.max(-34, Math.min(34, totalDy)));
+
+    const desired = Math.min(
+      SIZE_MAX,
+      Math.max(SIZE_MIN, Math.exp(-totalDy * SIZE_LOG_PER_PX))
+    );
+    const factor = desired / scaleAppliedRef.current;
+    scaleAppliedRef.current = desired;
+
+    // Tick at each quarter-step of size rather than every frame
+    if (Math.abs(desired - scaleDetentRef.current) >= 0.25) {
+      scaleDetentRef.current = desired;
+      haptics.trigger('detent', 45);
+    }
+
+    onScale?.({
+      sx: desired,
+      sy: desired,
+      sz: desired,
+      uniform: desired,
+      deltaScale: factor - 1,
+      handle: 'scale-uniform',
+      source: '3d-scale-uniform',
+      timestamp: Date.now(),
+    });
+  };
+
+  const handleScalePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeHandle !== 'scale-uniform') return;
+    e.preventDefault();
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    scaleStartYRef.current = null;
+    setScaleOffsetY(0);
+    setActiveHandle(null);
+    haptics.trigger('light');
+    onInteractionEnd?.('scale-uniform');
   };
 
   const emitTranslation = (
@@ -386,7 +488,6 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
           type="button"
           aria-label={`Translate ${label}`}
           onPointerDown={(e) => handleNodePointerDown(e, id, axis, direction)}
-          onPointerMove={handleNodePointerMove}
           onPointerUp={handleNodePointerUp}
           onPointerCancel={handleNodePointerUp}
           initial={{ scale: 0, opacity: 0 }}
@@ -419,15 +520,31 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
       ref={dialRef}
       className="relative w-[230px] h-[230px] mx-auto flex items-center justify-center select-none"
     >
-      {/* Background Circular Plate */}
+      {/* Background Circular Plate with Chamfered Dish Depth Illusion */}
       <motion.div
         initial={{ scale: 0.92, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 350, damping: 26 }}
-        className="absolute inset-0 rounded-full bg-[#131315] border border-white/10 shadow-inner flex items-center justify-center overflow-hidden"
+        className="absolute inset-0 rounded-full flex items-center justify-center overflow-hidden"
+        style={{
+          background: 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
+          boxShadow:
+            'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
+          border: '1px solid rgba(255,255,255,0.09)',
+        }}
       >
-        {/* Subtle Radial Lighting */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,transparent_70%)]" />
+        {/* Subtle Specular Top Arc Reflection for 3D Beveled Lip */}
+        <div
+          className="absolute inset-0 rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
+          }}
+        />
+
+        {/* Concentric Recessed Boundary Rings */}
+        <div className="absolute w-[86%] h-[86%] rounded-full border border-dashed border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]" />
+        <div className="absolute w-[62%] h-[62%] rounded-full border border-white/[0.07] shadow-[0_1px_2px_rgba(255,255,255,0.04)]" />
+        <div className="absolute w-[44%] h-[44%] rounded-full border border-dashed border-white/[0.08] shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]" />
 
         {/* Global Reference Grid Crosshairs */}
         <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -619,6 +736,40 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
 
       {/* -Z Node (Bottom-Left) -> Cobalt Blue */}
       {renderTranslationNode('trans-nz', '-Z', 'z', -1, 'bottom-3 left-3', 'blue')}
+
+      {/* ------------------------------------------------------------- */}
+      {/* Uniform Resize Handle (Top-Left) - drag up to grow, down to shrink */}
+      {/* Mirrors the Flat Screen resize handle position so it reads as the same control */}
+      {/* ------------------------------------------------------------- */}
+      <motion.div
+        id="handle-3d-scale-uniform"
+        role="button"
+        tabIndex={0}
+        aria-label="Resize model"
+        title="Resize - drag up to make bigger, down to make smaller"
+        style={{
+          top: '23%',
+          left: '23%',
+          transform: `translate(-50%, calc(-50% + ${scaleOffsetY}px))`,
+        }}
+        onPointerDown={handleScalePointerDown}
+        onPointerMove={handleScalePointerMove}
+        onPointerUp={handleScalePointerUp}
+        onPointerCancel={handleScalePointerUp}
+        whileHover={{ scale: 1.12, transition: { type: 'spring', stiffness: 450, damping: 15 } }}
+        whileTap={{ scale: 0.92, transition: { type: 'spring', stiffness: 500, damping: 18 } }}
+        animate={{ scale: activeHandle === 'scale-uniform' ? 1.18 : 1 }}
+        transition={{ type: 'spring', stiffness: 450, damping: 20 }}
+        className={`absolute z-30 ${
+          isFingerPen ? 'w-10 h-10' : 'w-8 h-8'
+        } rounded-full border shadow-md flex items-center justify-center cursor-ns-resize touch-none select-none transition-colors duration-150 ${
+          activeHandle === 'scale-uniform'
+            ? 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            : 'bg-[#242428] text-zinc-200 border-white/25 hover:bg-zinc-700 hover:border-white/50'
+        }`}
+      >
+        <Maximize2 className="w-3 h-3" />
+      </motion.div>
     </div>
   );
 };

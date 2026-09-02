@@ -47,6 +47,7 @@ import { HolisticDNAInspector } from './components/HolisticDNAInspector';
 import { FloatingReferenceClipboard } from './components/FloatingReferenceClipboard';
 import { ScaffoldingModal } from './components/ScaffoldingModal';
 import { MobileConnectModal } from './components/MobileConnectModal';
+import { NavigatorSandbox } from './components/Sandbox/NavigatorSandbox';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 import { haptics } from './utils/haptics';
 import { setGlobalSoundEnabled } from './utils/audio';
@@ -244,6 +245,7 @@ export default function App() {
 
   // Sprint 1-5 Spatial Editing & Hardware States
   const [fingerPenMode, setFingerPenMode] = useState<boolean>(true);
+  const [navigatorSensitivity, setNavigatorSensitivity] = useState<number>(0.5);
   const [fps, setFps] = useState<number>(60);
   const [projectionMode, setProjectionMode] = useState<'perspective' | 'orthographic'>('perspective');
   const [isStylusDetected, setIsStylusDetected] = useState<boolean>(false);
@@ -271,6 +273,13 @@ export default function App() {
   const [isClipboardOpen, setIsClipboardOpen] = useState<boolean>(false);
   const [isMobileConnectOpen, setIsMobileConnectOpen] = useState<boolean>(false);
   const [referenceImages, setReferenceImages] = useState<ReferenceImageItem[]>([]);
+  const [showSandbox, setShowSandbox] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('sandbox') === 'true' || params.has('sandbox');
+    }
+    return false;
+  });
 
   // Dev Settings: Disable Right-Click Radial Menu
   const [disableContextMenu, setDisableContextMenu] = useState<boolean>(() => {
@@ -468,11 +477,13 @@ export default function App() {
     (payload: TranslationEventPayload) => {
       if (!engine) return;
       if (payload.source.startsWith('2d-move-stick')) {
-        engine.translateScreenSpace(payload.deltaX * 0.15, payload.deltaY * 0.15, targetScope, isGizmoLocked);
+        // Dial emits screen px for this frame already (time-based glide) - do not rescale
+        engine.translateScreenSpace(payload.deltaX, payload.deltaY, targetScope, isGizmoLocked);
       } else if (payload.source.startsWith('3d-node')) {
-        if (payload.x !== 0) engine.translateAxis3D('x', payload.x * 0.05, targetScope);
-        if (payload.y !== 0) engine.translateAxis3D('y', payload.y * 0.05, targetScope);
-        if (payload.z !== 0) engine.translateAxis3D('z', payload.z * 0.05, targetScope);
+        // Dial emits world units already (time-based glide) - do not rescale here
+        if (payload.x !== 0) engine.translateAxis3D('x', payload.x, targetScope);
+        if (payload.y !== 0) engine.translateAxis3D('y', payload.y, targetScope);
+        if (payload.z !== 0) engine.translateAxis3D('z', payload.z, targetScope);
       }
     },
     [engine, isGizmoLocked, targetScope]
@@ -495,11 +506,17 @@ export default function App() {
   const handleGizmoScale = useCallback(
     (payload: ScaleEventPayload) => {
       if (!engine) return;
-      if (payload.deltaScale) {
-        engine.scaleAxis3D(1 + payload.deltaScale, targetScope);
+      if (payload.handle === 'scale-y') {
+        engine.scaleAxis('y', 1 + payload.deltaScale, targetScope, isGizmoLocked);
+      } else if (payload.handle === 'scale-x') {
+        engine.scaleAxis('x', 1 + payload.deltaScale, targetScope, isGizmoLocked);
+      } else if (payload.handle === 'scale-uniform') {
+        engine.scaleAxis('uniform', 1 + payload.deltaScale, targetScope, isGizmoLocked);
+      } else if (payload.deltaScale) {
+        engine.scaleAxis('uniform', 1 + payload.deltaScale, targetScope, isGizmoLocked);
       }
     },
-    [engine, targetScope]
+    [engine, isGizmoLocked, targetScope]
   );
 
   const handleGizmoReset = useCallback(() => {
@@ -803,6 +820,16 @@ export default function App() {
         onSelectPrimitiveName={(name) => setActiveModelName(name)}
         isGizmoActive={gizmoMode !== 'Hidden'}
         onToggleGizmo={() => setGizmoMode(gizmoMode === 'Hidden' ? 'Standard' : 'Hidden')}
+        isGizmoLocked={isGizmoLocked}
+        onToggleLock={() => setIsGizmoLocked((prev) => !prev)}
+        onCopyStrokes={handleCopyStrokes}
+        onPasteStrokes={handlePasteStrokes}
+        clipboardCount={clipboardCount}
+        navigatorSensitivity={navigatorSensitivity}
+        onSensitivityChange={(s) => {
+          setNavigatorSensitivity(s);
+          engine?.setNavigatorSensitivity(s);
+        }}
         onOpenLayers={() => setIsLayersOpen((prev) => !prev)}
         onToggleNavigator={() => handleControllerChange(activeController === 'navigator' ? 'tactile' : activeController === 'tactile' ? 'hidden' : 'navigator')}
         activeController={activeController}
@@ -861,6 +888,7 @@ export default function App() {
         onSaveProject={handleSaveProject}
         onLoadProject={handleLoadProject}
         onToggleTheme={handleToggleTheme}
+        onOpenSandbox={() => setShowSandbox(true)}
       />
 
       {/* Frame-Per-Second Counter: Bottom-Left with responsive mobile adjustment (Requirement 5) */}
@@ -904,6 +932,15 @@ export default function App() {
             <Disc className="w-3.5 h-3.5 text-sky-400" />
             <span>Tactile Wheel</span>
           </button>
+          <button
+            id="btn-open-sandbox-floating"
+            onClick={() => setShowSandbox(true)}
+            className="px-3 py-1.5 rounded-full bg-[#18191d]/90 hover:bg-[#22242c] backdrop-blur-md border border-amber-500/40 text-xs font-semibold text-amber-300 hover:text-white shadow-xl flex items-center gap-1.5 transition-all hover:scale-105"
+            title="Open Navigator Sandbox (6 Variations)"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
+            <span>Sandbox</span>
+          </button>
         </div>
       )}
 
@@ -911,12 +948,17 @@ export default function App() {
       {gizmoMode !== 'Hidden' && (activeController === 'navigator' || activeController === 'both') && (
         <TransformNavigator
           initialMode="2d"
-          isLocked={isGizmoLocked}
-          onLockChange={setIsGizmoLocked}
           onTranslate={handleGizmoTranslate}
           onRotate={handleGizmoRotate}
           onScale={handleGizmoScale}
           onReset={handleGizmoReset}
+          isLocked={isGizmoLocked}
+          onLockChange={setIsGizmoLocked}
+          sensitivity={navigatorSensitivity}
+          onSensitivityChange={(s) => {
+            setNavigatorSensitivity(s);
+            engine?.setNavigatorSensitivity(s);
+          }}
           onClose={() => handleControllerChange(activeController === 'both' ? 'tactile' : 'hidden')}
           onCopy={handleCopyStrokes}
           onPaste={handlePasteStrokes}
@@ -953,6 +995,11 @@ export default function App() {
           onToggleSound={handleToggleSound}
           isLocked={isGizmoLocked}
           onLockChange={setIsGizmoLocked}
+          sensitivity={navigatorSensitivity}
+          onSensitivityChange={(s) => {
+            setNavigatorSensitivity(s);
+            engine?.setNavigatorSensitivity(s);
+          }}
           activeTargetName={activeLayer?.name || 'Main Curves'}
           layers={layers}
           activeLayerId={activeLayerId}
@@ -1275,6 +1322,9 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Navigator Sandbox with 6 Interaction Variations */}
+      {showSandbox && <NavigatorSandbox onClose={() => setShowSandbox(false)} />}
     </div>
   );
 }

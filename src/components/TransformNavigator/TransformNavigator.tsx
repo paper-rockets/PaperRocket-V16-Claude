@@ -46,6 +46,8 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
   uiScale = 1.0,
   className = '',
   engine,
+  sensitivity = 0.5,
+  onSensitivityChange,
 }) => {
   // Internal Mode State (with fallback if not controlled)
   const [mode, setMode] = useState<TransformMode>(initialMode);
@@ -87,12 +89,12 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
 
   // Free-floating position with auto-clamping and localStorage persistence
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
-    const defaultWidth = 270;
-    const defaultHeight = 360;
+    const defaultWidth = 370;
+    const defaultHeight = 256;
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const defaultX = Math.max(12, Math.min(screenW - defaultWidth - 16, screenW - 290));
-    const defaultY = Math.max(12, Math.min(screenH - defaultHeight - 16, screenH - 420));
+    const defaultX = Math.max(12, screenW - defaultWidth - 20);
+    const defaultY = Math.max(12, screenH - defaultHeight - 24);
     
     try {
       const saved = localStorage.getItem('mody_transform_navigator_coords');
@@ -224,8 +226,13 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
   }, [accessibilityMode, onAccessibilityModeChange]);
 
   const handleReset = useCallback(() => {
-    onReset?.();
-  }, [onReset]);
+    if (onReset) {
+      onReset();
+    } else if (engine) {
+      engine.resetTransform(targetScope);
+      engine.snapToView('isometric');
+    }
+  }, [onReset, engine, targetScope]);
 
   const handleInteractionStartInternal = useCallback(
     (handleName: string) => {
@@ -362,48 +369,21 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
       id="transform-navigator-widget"
       role="region"
       aria-label="Transform Joystick Widget"
-      onPointerDown={handleCardDragStart}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         transform: `scale(${(uiScale || 1.0) * navigatorScale})`,
         transformOrigin: 'top left',
       }}
-      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
+      className={`fixed z-40 rounded-[26px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-visible flex flex-row items-stretch touch-none select-none ${className}`}
     >
-      {/* Header Bar with Segmented Controls & Copy/Paste actions */}
-      <NavigatorHeader
-        mode={mode}
-        onModeChange={handleModeChange}
-        isLocked={isLocked}
-        onLockToggle={handleLockToggle}
-        onReset={handleReset}
-        isCollapsed={false}
-        onCollapseToggle={() => {}}
-        onClose={onClose}
-        targetName={activeTargetName}
-        layers={layers}
-        activeLayerId={activeLayerId}
-        onSelectLayer={onSelectLayer}
-        models={models}
-        activeModelId={activeModelId}
-        onSelectModel={onSelectModel}
-        targetScope={targetScope}
-        onSelectTargetScope={onSelectTargetScope}
-        accessibilityMode={accessibilityMode}
-        onAccessibilityModeToggle={handleAccessibilityToggle}
-        onCopy={onCopy}
-        onPaste={onPaste}
-        clipboardCount={clipboardCount}
-      />
-
-      {/* Dial Interactive Surface & Drag Area around the Circle */}
+      {/* Left: Dial Interactive Surface & Drag Area */}
       <div
         id="transform-navigator-body"
-        className="overflow-hidden flex flex-col relative"
+        className="overflow-hidden flex items-center justify-center p-2 relative flex-1 min-w-0"
       >
         {/* Mode Content Switcher with smooth crossfade & spring layout */}
-        <div className={`px-2 py-2 relative flex items-center justify-center transition-transform duration-200 ${isBiggerUI ? 'scale-105' : 'scale-100'}`}>
+        <div className={`relative flex items-center justify-center transition-transform duration-200 ${isBiggerUI ? 'scale-105' : 'scale-100'}`}>
           <AnimatePresence mode="wait">
             {mode === '2d' && (
               <motion.div
@@ -440,6 +420,7 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
                   accessibilityMode={accessibilityMode}
                   onTranslate={onTranslate}
                   onRotate={onRotate}
+                  onScale={onScale}
                   onInteractionStart={handleInteractionStartInternal}
                   onInteractionEnd={handleInteractionEndInternal}
                 />
@@ -468,46 +449,43 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
             )}
           </AnimatePresence>
 
-          {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) */}
-          <button
-            id="transform-navigator-settings-btn"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              playHapticSound('click', soundEnabled);
-              setShowMenu((prev) => !prev);
-              setShowHiddenPhysicsPanel(false);
-            }}
-            className={`absolute bottom-2.5 left-2.5 z-30 w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md ${
-              showMenu
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                : 'bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white border border-white/[0.06] shadow-sm'
-            }`}
-            title="Settings & Options"
-            aria-label="Navigator settings"
-          >
-            <MoreHorizontal className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
-          <button
-            id="transform-navigator-minimize-btn"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              playHapticSound('pop', soundEnabled);
-              setIsOpen(false);
-              setShowMenu(false);
-              setShowHiddenPhysicsPanel(false);
-            }}
-            className="absolute bottom-2.5 right-2.5 z-30 w-7 h-7 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/[0.06] shadow-sm backdrop-blur-md"
-            title="Minimize to Dot"
-            aria-label="Minimize navigator"
-          >
-            <Minus className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
+
+      {/* Right Vertical Bar: NavigatorHeader (Tabs, Target Selector, Action Icons) */}
+      <NavigatorHeader
+        mode={mode}
+        onModeChange={handleModeChange}
+        isLocked={isLocked}
+        onLockToggle={handleLockToggle}
+        onReset={handleReset}
+        isCollapsed={false}
+        onCollapseToggle={() => {}}
+        onClose={onClose}
+        onMinimize={() => {
+          playHapticSound('pop', soundEnabled);
+          setIsOpen(false);
+          setShowMenu(false);
+          setShowHiddenPhysicsPanel(false);
+        }}
+        targetName={activeTargetName}
+        layers={layers}
+        activeLayerId={activeLayerId}
+        onSelectLayer={onSelectLayer}
+        models={models}
+        activeModelId={activeModelId}
+        onSelectModel={onSelectModel}
+        targetScope={targetScope}
+        onSelectTargetScope={onSelectTargetScope}
+        accessibilityMode={accessibilityMode}
+        onAccessibilityModeToggle={handleAccessibilityToggle}
+        onHeaderDragStart={handleCardDragStart}
+        onCopy={onCopy}
+        onPaste={onPaste}
+        clipboardCount={clipboardCount}
+        sensitivity={sensitivity}
+        onSensitivityChange={onSensitivityChange}
+      />
 
       {/* Navigator Quick Settings Popover anchored at Bottom */}
       <AnimatePresence>
@@ -861,30 +839,6 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") */}
-      <div
-        id="transform-navigator-resize-handle"
-        onPointerDown={handleResizeStart}
-        onDoubleClick={handleResetScale}
-        className="absolute bottom-0 right-0 z-40 w-6 h-6 flex items-end justify-end p-1 cursor-nwse-resize group transition-transform active:scale-125 select-none"
-        title="Drag corner to resize navigator (Double-click to reset 100%)"
-      >
-        <div className="w-3.5 h-3.5 flex flex-col justify-end items-end gap-[1.5px] opacity-40 group-hover:opacity-100 transition-opacity pointer-events-none">
-          <div className="flex gap-[1.5px]">
-            <div className="w-1 h-1 rounded-full bg-white/70" />
-          </div>
-          <div className="flex gap-[1.5px]">
-            <div className="w-1 h-1 rounded-full bg-white/70" />
-            <div className="w-1 h-1 rounded-full bg-white/70" />
-          </div>
-          <div className="flex gap-[1.5px]">
-            <div className="w-1 h-1 rounded-full bg-white/90" />
-            <div className="w-1 h-1 rounded-full bg-white/90" />
-            <div className="w-1 h-1 rounded-full bg-white/90" />
-          </div>
-        </div>
-      </div>
 
       {/* Live Scale Percentage Badge while Resizing */}
       {isResizing && (
