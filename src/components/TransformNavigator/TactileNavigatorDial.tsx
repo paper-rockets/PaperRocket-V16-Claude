@@ -9,6 +9,7 @@ import {
 interface TactileNavigatorDialProps {
   isLocked?: boolean;
   accessibilityMode?: AccessibilityMode;
+  targetScope?: any;
   onTranslate?: (data: TranslationEventPayload) => void;
   onRotate?: (data: RotationEventPayload) => void;
   onInteractionStart?: (handleName: string) => void;
@@ -18,6 +19,7 @@ interface TactileNavigatorDialProps {
 
 export const TactileNavigatorDial: React.FC<TactileNavigatorDialProps> = ({
   isLocked = false,
+  targetScope = 'all',
   onRotate,
   onInteractionStart,
   onInteractionEnd,
@@ -49,12 +51,12 @@ export const TactileNavigatorDial: React.FC<TactileNavigatorDialProps> = ({
       }
 
       if (engine) {
-        engine.orbitCamera(-deltaYaw * 0.015, -deltaPitch * 0.015);
+        engine.rotateTrackball(deltaYaw, -deltaPitch, targetScope);
       }
 
       onInteractionEnd?.('trackball-rotate');
     },
-    [isLocked, onRotate, onInteractionStart, onInteractionEnd, engine]
+    [isLocked, onRotate, onInteractionStart, onInteractionEnd, engine, targetScope]
   );
 
   return (

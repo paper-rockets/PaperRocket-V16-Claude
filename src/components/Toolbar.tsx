@@ -64,6 +64,10 @@ import {
   Wand2,
   Shield,
   Clipboard,
+  ClipboardPaste,
+  Lock,
+  Unlock,
+  SlidersHorizontal,
   Eye,
   EyeOff,
   Maximize,
@@ -75,6 +79,7 @@ import {
   Moon,
   Save,
   Upload,
+  LayoutGrid,
 } from 'lucide-react';
 import { isFullscreen, toggleFullscreen, subscribeFullscreenChange } from '../utils/fullscreen';
 
@@ -113,6 +118,13 @@ interface ToolbarProps {
   isStylusDetected?: boolean;
   uiScale?: number;
   onUiScaleChange?: (scale: number) => void;
+  isGizmoLocked?: boolean;
+  onToggleLock?: () => void;
+  onCopyStrokes?: () => void;
+  onPasteStrokes?: () => void;
+  clipboardCount?: number;
+  navigatorSensitivity?: number;
+  onSensitivityChange?: (s: number) => void;
 
   // Integrated Top Menu Bar Props
   showGrid?: boolean;
@@ -138,6 +150,7 @@ interface ToolbarProps {
   onOpenScaffolding?: () => void;
   onOpenClipboard?: () => void;
   onOpenBrushSettings?: () => void;
+  onOpenSandbox?: () => void;
   onOpenColorStudio?: () => void;
 }
 
@@ -246,12 +259,20 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
   onOpenARViewer,
   onOpenScaffolding,
   onOpenClipboard,
+  onOpenSandbox,
   theme = 'dark',
   onToggleTheme,
   onSaveProject,
   onLoadProject,
   onOpenBrushSettings,
   onOpenColorStudio,
+  isGizmoLocked = false,
+  onToggleLock,
+  onCopyStrokes,
+  onPasteStrokes,
+  clipboardCount = 0,
+  navigatorSensitivity = 0.5,
+  onSensitivityChange,
 }) => {
   const [selectionMode, setSelectionMode] = useState<'pointer' | 'lasso' | 'marquee'>('pointer');
   const [activePrimitive, setActivePrimitive] = useState<string | null>(null);
@@ -259,6 +280,9 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
   const [showBrushShelf, setShowBrushShelf] = useState<boolean>(false);
   const [showSceneShelf, setShowSceneShelf] = useState<boolean>(false);
   const [showSettingsShelf, setShowSettingsShelf] = useState<boolean>(false);
+  const [showSensitivityPopover, setShowSensitivityPopover] = useState<boolean>(false);
+  const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
+  const [pasteFeedback, setPasteFeedback] = useState<boolean>(false);
   const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [isPinned, setIsPinned] = useState<boolean>(false);
@@ -456,6 +480,18 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
     }
   };
 
+  const handleCopy = () => {
+    setCopyFeedback(true);
+    setTimeout(() => setCopyFeedback(false), 900);
+    onCopyStrokes?.();
+  };
+
+  const handlePaste = () => {
+    setPasteFeedback(true);
+    setTimeout(() => setPasteFeedback(false), 900);
+    onPasteStrokes?.();
+  };
+
   // Convert raw 3D brush size (0.01..0.25) to clean string
   const displayPxSize = (brushSettings.size * 30).toFixed(1) + 'px';
 
@@ -476,7 +512,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
         /* MINIMIZED SLIM VERTICAL RAIL - MINIMIZES SIDEWAYS TO THE LEFT */
         <div
           id="mody-left-toolbar-minimized"
-          className={`w-12 sm:w-13 py-2.5 px-1.5 rounded-2xl backdrop-blur-xl border shadow-2xl flex flex-col items-center gap-2 transition-all animate-in fade-in slide-in-from-left duration-150 ${
+          className={`w-12 sm:w-13 py-2.5 px-1.5 rounded-2xl backdrop-blur-xl border shadow-2xl flex flex-col items-center gap-1.5 transition-all animate-in fade-in slide-in-from-left duration-150 ${
             theme === 'light'
               ? 'bg-white/95 border-neutral-200 text-neutral-800'
               : 'bg-[#141519]/95 border-zinc-800 text-zinc-200'
@@ -486,7 +522,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
           <button
             type="button"
             onClick={() => setIsMinimized(false)}
-            className={`p-2 rounded-xl transition-colors ${
+            className={`p-2 rounded-xl transition-colors cursor-pointer ${
               theme === 'light'
                 ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
                 : 'text-zinc-400 hover:text-white hover:bg-white/10'
@@ -505,7 +541,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
             onClick={() => {
               setTool(tool === 'brush' ? 'eraser' : 'brush');
             }}
-            className={`p-2 rounded-xl transition-all ${
+            className={`p-2 rounded-xl transition-all cursor-pointer ${
               tool === 'brush'
                 ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
                 : theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
@@ -526,7 +562,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
               setIsMinimized(false);
               toggleShelf('brush');
             }}
-            className={`w-full py-1.5 rounded-lg border text-[10px] font-mono flex items-center justify-center transition-colors ${
+            className={`w-full py-1.5 rounded-lg border text-[10px] font-mono flex items-center justify-center transition-colors cursor-pointer ${
               theme === 'light'
                 ? 'bg-neutral-100 hover:bg-neutral-200 border-neutral-300 text-neutral-800'
                 : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
@@ -543,7 +579,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
               if (onOpenColorStudio) onOpenColorStudio();
               else setShowColorModal(true);
             }}
-            className="p-1 rounded-xl hover:bg-white/10 transition-colors"
+            className="p-1 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
             title="Choose Color (Color Studio)"
           >
             <div
@@ -557,7 +593,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
             <button
               type="button"
               onClick={onOpenBrushSettings}
-              className={`p-2 rounded-xl transition-colors ${
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
                 theme === 'light'
                   ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
                   : 'text-zinc-400 hover:text-white hover:bg-white/10'
@@ -568,12 +604,130 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
             </button>
           )}
 
+          {/* Divider */}
+          <div className={`w-6 h-[1px] ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
+
+          {/* Lock Constraints Button */}
+          {onToggleLock && (
+            <button
+              type="button"
+              onClick={onToggleLock}
+              className={`p-2 rounded-xl transition-all cursor-pointer ${
+                isGizmoLocked
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
+              title={isGizmoLocked ? 'Transform Constraints: LOCKED (Click to unlock)' : 'Transform Constraints: Unlocked (Click to lock)'}
+            >
+              {isGizmoLocked ? <Lock className="w-4 h-4 stroke-[2]" /> : <Unlock className="w-4 h-4 stroke-[2]" />}
+            </button>
+          )}
+
+          {/* Copy Curves */}
+          {onCopyStrokes && (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={`p-2 rounded-xl transition-all cursor-pointer ${
+                copyFeedback
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold' : 'bg-white text-zinc-950 font-bold'
+                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
+              title="Copy Curves (Ctrl+C)"
+            >
+              <Copy className="w-4 h-4 stroke-[2]" />
+            </button>
+          )}
+
+          {/* Paste Curves */}
+          {onPasteStrokes && (
+            <button
+              type="button"
+              onClick={handlePaste}
+              className={`p-2 rounded-xl transition-all relative cursor-pointer ${
+                pasteFeedback
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold' : 'bg-white text-zinc-950 font-bold'
+                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
+              title={`Paste Curves (Ctrl+V)${clipboardCount > 0 ? ` • ${clipboardCount} copied` : ''}`}
+            >
+              <ClipboardPaste className="w-4 h-4 stroke-[2]" />
+              {clipboardCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 px-1 py-0.2 rounded-full bg-sky-500 text-[8px] font-mono font-bold text-black leading-tight">
+                  {clipboardCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Navigator Sensitivity Popover */}
+          {onSensitivityChange && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowSensitivityPopover((prev) => !prev)}
+                className={`p-2 rounded-xl transition-all cursor-pointer ${
+                  showSensitivityPopover
+                    ? 'bg-sky-500 text-black font-bold shadow-sm'
+                    : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+                title={`Navigator Sensitivity: ${navigatorSensitivity.toFixed(2)}x`}
+              >
+                <SlidersHorizontal className="w-4 h-4 stroke-[2]" />
+              </button>
+
+              {showSensitivityPopover && (
+                <div
+                  className={`absolute left-full top-0 ml-2 w-48 p-2.5 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 text-xs flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100 ${
+                    theme === 'light' ? 'bg-white/98 border-neutral-200 text-neutral-800' : 'bg-[#14151a]/98 border-white/15 text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="font-bold">SENSITIVITY</span>
+                    <span className="text-sky-400 font-bold">{navigatorSensitivity.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="2.0"
+                    step="0.05"
+                    value={navigatorSensitivity}
+                    onChange={(e) => onSensitivityChange?.(parseFloat(e.target.value))}
+                    className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                  />
+                  <div className="flex items-center justify-between text-[8.5px] font-mono text-zinc-500">
+                    <button type="button" onClick={() => onSensitivityChange?.(0.25)} className="hover:text-white">0.25x</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(0.5)} className="hover:text-white font-bold text-sky-400">0.5x (Def)</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(1.0)} className="hover:text-white">1.0x</button>
+                    <button type="button" onClick={() => onSensitivityChange?.(2.0)} className="hover:text-white">2.0x</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Finger-Pen Mode Toggle */}
+          {onToggleFingerPenMode && (
+            <button
+              type="button"
+              onClick={() => onToggleFingerPenMode(!fingerPenMode)}
+              className={`p-2 rounded-xl transition-all cursor-pointer ${
+                fingerPenMode
+                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
+                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              }`}
+              title={`Finger-Pen Touch Mode: ${fingerPenMode ? 'ON (Stylus draws, fingers pan)' : 'OFF'}`}
+            >
+              <PenTool className="w-4 h-4 stroke-[2]" />
+            </button>
+          )}
+
           {/* Clone Button */}
           {onCloneModel && (
             <button
               type="button"
               onClick={onCloneModel}
-              className={`p-2 rounded-xl transition-colors ${
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
                 theme === 'light'
                   ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
                   : 'text-zinc-400 hover:text-white hover:bg-white/10'
@@ -594,7 +748,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
             disabled={!canUndo}
             className={`p-2 rounded-xl transition-all ${
               canUndo
-                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100 cursor-pointer' : 'text-zinc-300 hover:text-white hover:bg-white/10 cursor-pointer'
                 : 'text-zinc-500 opacity-40 cursor-not-allowed'
             }`}
             title="Undo (Ctrl+Z)"
@@ -609,7 +763,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
             disabled={!canRedo}
             className={`p-2 rounded-xl transition-all ${
               canRedo
-                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100' : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                ? theme === 'light' ? 'text-neutral-700 hover:text-neutral-950 hover:bg-neutral-100 cursor-pointer' : 'text-zinc-300 hover:text-white hover:bg-white/10 cursor-pointer'
                 : 'text-zinc-500 opacity-40 cursor-not-allowed'
             }`}
             title="Redo (Ctrl+Y)"
@@ -1776,6 +1930,48 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
                       <Disc className="w-3.5 h-3.5" />
                       <span>Circular</span>
                     </button>
+                  </div>
+
+                  {onOpenSandbox && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSceneShelf(false);
+                        onOpenSandbox();
+                      }}
+                      className="w-full mt-1.5 py-1.5 px-2 rounded-lg text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 flex items-center justify-between transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Navigator Sandbox</span>
+                      </div>
+                      <span className="text-[9px] font-mono px-1 rounded bg-amber-400/20 text-amber-200">6 Variations</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Navigator Sensitivity Control */}
+              {onSensitivityChange && (
+                <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400">
+                    <span>SENSITIVITY</span>
+                    <span className="text-sky-400 font-bold">{navigatorSensitivity.toFixed(2)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="2.0"
+                    step="0.05"
+                    value={navigatorSensitivity}
+                    onChange={(e) => onSensitivityChange(parseFloat(e.target.value))}
+                    className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
+                  />
+                  <div className="flex items-center justify-between text-[8px] font-mono text-zinc-500">
+                    <button type="button" onClick={() => onSensitivityChange(0.25)} className="hover:text-white">0.25x</button>
+                    <button type="button" onClick={() => onSensitivityChange(0.5)} className="hover:text-white font-bold text-sky-400">0.5x</button>
+                    <button type="button" onClick={() => onSensitivityChange(1.0)} className="hover:text-white">1.0x</button>
+                    <button type="button" onClick={() => onSensitivityChange(2.0)} className="hover:text-white">2.0x</button>
                   </div>
                 </div>
               )}

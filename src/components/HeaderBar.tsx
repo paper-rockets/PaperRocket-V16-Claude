@@ -88,6 +88,7 @@ interface HeaderBarProps {
   onOpenModelDisplay?: () => void;
   onOpenMobileConnect?: () => void;
   onOpenMatCapStudio?: () => void;
+  onOpenSandbox?: () => void;
 }
 
 export const HeaderBarComponent: React.FC<HeaderBarProps> = ({
@@ -96,6 +97,7 @@ export const HeaderBarComponent: React.FC<HeaderBarProps> = ({
   onToggleGrid,
   activeController = 'navigator',
   onChangeController,
+  onOpenSandbox,
   onOpenColorPicker,
   onOpenBrushPicker,
   onOpenPaintPicker,
@@ -646,6 +648,24 @@ export const HeaderBarComponent: React.FC<HeaderBarProps> = ({
                       <span className="truncate w-full text-[9px]">Hidden</span>
                     </button>
                   </div>
+
+                  {onOpenSandbox && (
+                    <button
+                      id="menu-btn-open-sandbox"
+                      type="button"
+                      onClick={() => {
+                        onOpenMenu();
+                        onOpenSandbox();
+                      }}
+                      className="w-full mt-2 py-2 px-3 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 flex items-center justify-between transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Navigator Sandbox</span>
+                      </div>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-200">6 Variations</span>
+                    </button>
+                  )}
                 </div>
               )}
 

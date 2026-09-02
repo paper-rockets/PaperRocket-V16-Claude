@@ -587,6 +587,8 @@ export interface TransformNavigatorProps {
   dockPosition?: 'bottom-right' | 'bottom-left' | 'top-right' | 'floating';
   uiScale?: number;
   engine?: any;
+  sensitivity?: number;
+  onSensitivityChange?: (s: number) => void;
 }
 
 export interface TelemetryLogEntry {

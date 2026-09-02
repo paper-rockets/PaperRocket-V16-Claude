@@ -3066,8 +3066,10 @@ export class StudioEngine {
       sy = avg;
     }
 
-    const sz = (sx + sy) / 2;
-    const anchor = this.getScreenCenterWorldAnchor();
+    // If both axes are scaling or if locked, scale depth proportionally; otherwise keep depth at 1.0
+    const isUniform = isLocked || (Math.abs(sx - 1.0) > 0.0001 && Math.abs(sy - 1.0) > 0.0001);
+    const sz = isUniform ? (sx + sy) / 2 : 1.0;
+    const anchor = this.getScreenCenterWorldAnchor(this.getSelectionCenter(scope));
 
     const forward = this.camera.getWorldDirection(new THREE.Vector3()).normalize();
     const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();
@@ -3233,18 +3235,49 @@ export class StudioEngine {
   }
 
   /**
+   * Scales targeted objects along a specific axis ('x', 'y', 'z') or 'uniform'
+   * around the selection centroid.
+   * If isLocked is true, enforces uniform proportions.
+   */
+  public scaleAxis(
+    axis: 'x' | 'y' | 'z' | 'uniform',
+    factor: number,
+    scope: TransformTargetScope = 'all',
+    isLocked: boolean = false
+  ): void {
+    const center = this.getSelectionCenter(scope);
+    const toCenter = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
+    const fromCenter = new THREE.Matrix4().makeTranslation(center.x, center.y, center.z);
+
+    let sx = 1.0;
+    let sy = 1.0;
+    let sz = 1.0;
+
+    if (isLocked || axis === 'uniform') {
+      sx = factor;
+      sy = factor;
+      sz = factor;
+    } else if (axis === 'y') {
+      sy = factor;
+    } else if (axis === 'x') {
+      sx = factor;
+    } else if (axis === 'z') {
+      sz = factor;
+    }
+
+    const scaleMat = new THREE.Matrix4().makeScale(sx, sy, sz);
+    const finalMat = new THREE.Matrix4().multiply(fromCenter).multiply(scaleMat).multiply(toCenter);
+    this.applyTransformMatrix(finalMat, scope);
+  }
+
+  /**
    * Scales targeted objects uniformly or along an axis around selection center
    */
   public scaleAxis3D(
     factor: number,
     scope: TransformTargetScope = 'all'
   ): void {
-    const center = this.getSelectionCenter(scope);
-    const toCenter = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
-    const fromCenter = new THREE.Matrix4().makeTranslation(center.x, center.y, center.z);
-    const scaleMat = new THREE.Matrix4().makeScale(factor, factor, factor);
-    const finalMat = new THREE.Matrix4().multiply(fromCenter).multiply(scaleMat).multiply(toCenter);
-    this.applyTransformMatrix(finalMat, scope);
+    this.scaleAxis('uniform', factor, scope, false);
   }
 
   /**
@@ -3433,13 +3466,37 @@ export class StudioEngine {
   }
 
   /**
+   * Resets model/surface and stroke transforms without affecting camera
+   */
+  public resetTransform(scope: TransformTargetScope = 'all'): void {
+    if (scope === 'all' || scope === 'model') {
+      this.modelRoot.position.set(0, 0, 0);
+      this.modelRoot.rotation.set(0, 0, 0);
+      this.modelRoot.scale.set(1, 1, 1);
+      this.modelRoot.updateMatrixWorld(true);
+    }
+    if (scope === 'all' || scope === 'strokes' || scope === 'active_layer') {
+      this.strokeRoot.position.set(0, 0, 0);
+      this.strokeRoot.rotation.set(0, 0, 0);
+      this.strokeRoot.scale.set(1, 1, 1);
+      this.strokeRoot.updateMatrixWorld(true);
+
+      this.strokes.forEach(({ meshes }) => {
+        meshes.forEach((m) => {
+          m.position.set(0, 0, 0);
+          m.rotation.set(0, 0, 0);
+          m.scale.set(1, 1, 1);
+          m.updateMatrixWorld(true);
+        });
+      });
+    }
+  }
+
+  /**
    * Resets model/surface transform without affecting camera
    */
   public resetModelOrSurface(scope: TransformTargetScope = 'all'): void {
-    this.modelRoot.position.set(0, 0, 0);
-    this.modelRoot.rotation.set(0, 0, 0);
-    this.modelRoot.scale.set(1, 1, 1);
-    this.modelRoot.updateMatrixWorld(true);
+    this.resetTransform(scope);
   }
 
   /**

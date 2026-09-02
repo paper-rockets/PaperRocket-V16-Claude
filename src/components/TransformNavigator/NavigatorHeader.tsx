@@ -42,6 +42,8 @@ export interface NavigatorHeaderProps {
   accessibilityMode?: AccessibilityMode;
   onAccessibilityModeToggle?: () => void;
   onHeaderDragStart?: (e: React.PointerEvent) => void;
+  rotationAxis?: 'x' | 'y' | 'z';
+  onRotationAxisChange?: (axis: 'x' | 'y' | 'z') => void;
   onCopy?: () => void;
   onPaste?: () => void;
   clipboardCount?: number;
@@ -72,6 +74,8 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
   targetScope = 'active_layer',
   onSelectTargetScope,
   onHeaderDragStart,
+  rotationAxis,
+  onRotationAxisChange,
   onMinimize,
 }) => {
   const [showTargetDropdown, setShowTargetDropdown] = useState(false);
@@ -127,44 +131,76 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
     setShowTargetDropdown(false);
   };
 
-  // Determine current display label
+  // Determine current display label and compact pill label
   let displayLabel = targetName;
+  let shortLabel = targetName;
   if (targetScope === 'active_layer') {
     const activeL = layers.find((l) => l.id === activeLayerId);
-    if (activeL) displayLabel = activeL.name;
+    if (activeL) {
+      displayLabel = activeL.name;
+      shortLabel = activeL.name;
+    } else {
+      displayLabel = 'Active Layer';
+      shortLabel = 'Layer';
+    }
   } else if (targetScope === 'model') {
     if (activeModelId) {
       const activeM = models.find((m) => m.id === activeModelId);
-      if (activeM) displayLabel = activeM.name;
+      if (activeM) {
+        displayLabel = activeM.name;
+        shortLabel = activeM.name;
+      }
     } else if (models.length > 0) {
       displayLabel = models[0].name;
+      shortLabel = models[0].name;
+    } else {
+      displayLabel = '3D Model';
+      shortLabel = 'Model';
     }
   } else if (targetScope === 'strokes') {
     displayLabel = 'All Curves';
+    shortLabel = 'Curves';
   } else if (targetScope === 'all') {
     displayLabel = 'All Objects';
+    shortLabel = 'All';
   }
+
+  const handleHeaderPointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.tagName === 'BUTTON' ||
+      target.closest('button') ||
+      target.tagName === 'INPUT' ||
+      target.closest('input') ||
+      target.closest('#navigator-target-dropdown-panel') ||
+      target.closest('[role="listbox"]')
+    ) {
+      return;
+    }
+    onHeaderDragStart?.(e);
+  };
 
   return (
     <div
       id="transform-navigator-header"
-      className="w-[62px] shrink-0 flex flex-col justify-between items-center border-l border-white/[0.08] select-none relative p-1.5 gap-1.5 self-stretch z-30"
+      onPointerDown={handleHeaderPointerDown}
+      className="w-[62px] shrink-0 flex flex-col justify-between items-center border-l border-white/[0.08] select-none relative p-1.5 gap-1.5 self-stretch z-30 cursor-grab active:cursor-grabbing"
     >
-      {/* Dedicated Drag Grip Handle */}
+      {/* 1. Top Section (Orange scribble 1): Dedicated Drag Grip Handle */}
       <div
+        id="navigator-drag-grip-handle"
         onPointerDown={onHeaderDragStart}
-        className="w-full flex items-center justify-center py-0.5 cursor-grab active:cursor-grabbing hover:bg-white/10 rounded-md transition-colors"
+        className="w-full flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing hover:bg-white/10 rounded-md transition-colors select-none"
         title="Drag to move navigator"
-        role="button"
         aria-label="Drag to move navigator"
       >
-        <div className="w-6 h-1 rounded-full bg-white/30 hover:bg-white/60 transition-colors pointer-events-none" />
+        <div className="w-6 h-1 rounded-full bg-white/40 hover:bg-white/70 transition-colors pointer-events-none" />
       </div>
 
-      {/* Main Mode Switcher: Mini Icon Pill Box */}
+      {/* Main Mode Switcher: Vertically Stacked Icon Pill Box */}
       <div
         id="navigator-mode-segmented-control"
-        className="w-full flex p-0.5 rounded-lg bg-[#101114] border border-white/[0.08] shadow-inner gap-0.5"
+        className="w-full flex flex-col p-1 rounded-xl bg-[#101114] border border-white/[0.08] shadow-inner gap-1"
         role="tablist"
         aria-label="Transform Dimension Mode"
       >
@@ -180,21 +216,73 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
               aria-selected={isSelected}
               title={tab.label}
               onClick={() => handleModeSwitch(tab.id)}
-              className={`flex-1 py-1.5 flex items-center justify-center rounded-md transition-all duration-150 cursor-pointer ${
+              className={`w-full py-2 flex items-center justify-center rounded-lg transition-all duration-150 cursor-pointer ${
                 isSelected
-                  ? 'bg-white text-zinc-950 shadow-sm font-extrabold'
+                  ? 'bg-white text-zinc-950 shadow-md font-extrabold scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
               }`}
             >
               {isRotate ? (
-                <Rotate3d className="w-3.5 h-3.5 stroke-[2.2]" />
+                <Rotate3d className="w-5 h-5 stroke-[2.2]" />
               ) : (
-                <Move className="w-3.5 h-3.5 stroke-[2.2]" />
+                <Move className="w-5 h-5 stroke-[2.2]" />
               )}
             </button>
           );
         })}
       </div>
+
+      {/* Rotation Axis Switcher (X | Y | Z) in Move mode */}
+      {rotationAxis && onRotationAxisChange && mode !== 'tactile_ball' && (
+        <div
+          id="navigator-rotation-axis-control"
+          className="w-full flex p-0.5 rounded-lg bg-[#101114] border border-white/[0.08] shadow-inner gap-0.5 select-none"
+          role="radiogroup"
+          aria-label="Select Rotation Axis"
+        >
+          {(['x', 'y', 'z'] as const).map((axis) => {
+            const isSelected = rotationAxis === axis;
+            const activeStyles = {
+              x: 'bg-rose-500/25 text-rose-300 border-rose-500/40 font-bold',
+              y: 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40 font-bold',
+              z: 'bg-sky-500/25 text-sky-300 border-sky-500/40 font-bold',
+            };
+            const titles = {
+              x: 'Rotate X Axis (Pitch / Elevation)',
+              y: 'Rotate Y Axis (Turntable / Yaw)',
+              z: 'Rotate Z Axis (Roll / Screen-Space)',
+            };
+            return (
+              <button
+                key={axis}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRotationAxisChange(axis);
+                  haptics.trigger('mode-switch');
+                }}
+                className={`flex-1 py-1 flex items-center justify-center rounded text-[9.5px] font-bold transition-all duration-150 cursor-pointer ${
+                  isSelected
+                    ? `${activeStyles[axis]} border shadow-sm`
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5 border border-transparent'
+                }`}
+                title={titles[axis]}
+              >
+                {axis.toUpperCase()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 2. Middle Spacer Drag Zone (Orange scribble 2): Between mode tabs and target selector */}
+      <div
+        onPointerDown={onHeaderDragStart}
+        className="w-full h-1 cursor-grab active:cursor-grabbing hover:bg-white/5 rounded transition-colors select-none shrink-0"
+        title="Drag to move navigator"
+      />
 
       {/* Compact Target Layer / Model Selector Button */}
       <div className="relative w-full">
@@ -204,9 +292,9 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
           onClick={() => setShowTargetDropdown(!showTargetDropdown)}
           title={`Target: ${displayLabel} (Click to select)`}
           aria-label="Select target layer or 3D model"
-          className="w-full flex items-center justify-between px-1 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[9px] text-zinc-300 font-semibold transition-all group cursor-pointer"
+          className="w-full flex items-center justify-between px-1.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[9px] text-zinc-300 font-semibold transition-all group cursor-pointer"
         >
-          <div className="flex items-center gap-1 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
             <span
               className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                 targetScope === 'model'
@@ -219,11 +307,11 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
               }`}
             />
             <span className="text-zinc-200 font-bold truncate text-[9px] leading-tight text-left">
-              {displayLabel.length > 4 ? `${displayLabel.slice(0, 4)}..` : displayLabel}
+              {shortLabel}
             </span>
           </div>
           <ChevronDown
-            className={`w-2.5 h-2.5 text-zinc-400 group-hover:text-zinc-200 shrink-0 transition-transform ${
+            className={`w-2.5 h-2.5 text-zinc-400 group-hover:text-zinc-200 shrink-0 ml-0.5 transition-transform ${
               showTargetDropdown ? 'rotate-180' : ''
             }`}
           />
@@ -339,6 +427,13 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
           </div>
         )}
       </div>
+
+      {/* 3. Lower Spacer Drag Zone (Orange scribble 3): Between target selector and bottom actions */}
+      <div
+        onPointerDown={onHeaderDragStart}
+        className="w-full flex-1 min-h-[16px] cursor-grab active:cursor-grabbing hover:bg-white/5 rounded transition-colors select-none"
+        title="Drag to move navigator"
+      />
 
       {/* Action Buttons: Reset & Minimize */}
       <div className="flex items-center justify-between gap-1 w-full pt-1 border-t border-white/[0.06]">

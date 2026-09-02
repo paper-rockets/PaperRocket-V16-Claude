@@ -180,7 +180,7 @@ export const SpatialNavGizmo: React.FC<SpatialNavGizmoProps> = ({
         // Vertical stretch along Y
         const delta = -dy * 0.02;
         if (engine && targetScope !== 'camera') {
-          engine.scaleAxis3D(1 + delta, targetScope as TransformTargetScope);
+          engine.scaleAxis('y', 1 + delta, targetScope as TransformTargetScope);
         } else if (engine) {
           engine.zoom(-delta * 100);
         }
@@ -188,7 +188,7 @@ export const SpatialNavGizmo: React.FC<SpatialNavGizmoProps> = ({
         // Horizontal stretch along X
         const delta = dx * 0.02;
         if (engine && targetScope !== 'camera') {
-          engine.scaleAxis3D(1 + delta, targetScope as TransformTargetScope);
+          engine.scaleAxis('x', 1 + delta, targetScope as TransformTargetScope);
         } else if (engine) {
           engine.zoom(-delta * 100);
         }
@@ -197,7 +197,7 @@ export const SpatialNavGizmo: React.FC<SpatialNavGizmoProps> = ({
         const delta = (dx - dy) * 0.018;
         const factor = 1 + delta;
         if (engine && targetScope !== 'camera') {
-          engine.scaleAxis3D(factor, targetScope as TransformTargetScope);
+          engine.scaleAxis('uniform', factor, targetScope as TransformTargetScope);
         } else {
           if (onZoomCamera) onZoomCamera(-delta * 3);
           else if (engine) engine.zoom(-delta * 120);

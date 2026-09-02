@@ -250,55 +250,62 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
     [onInteractionEnd]
   );
 
-  // Card drag handler: Moves the modal when dragging anywhere around the circle or card background
+  // Card drag handler: Moves the modal when dragging anywhere along the header sidebar
   const handleCardDragStart = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    // Don't drag if clicking buttons, segmented controls, or interactive dial handles
+    const isDragGrip =
+      target.id === 'navigator-drag-grip-handle' ||
+      target.closest('#navigator-drag-grip-handle') ||
+      target.closest('[aria-label="Drag to move navigator"]') ||
+      target.closest('[title="Drag to move navigator"]') ||
+      target.closest('#transform-navigator-header');
+
     if (
       target.tagName === 'BUTTON' ||
       target.closest('button') ||
       target.getAttribute('role') === 'button' ||
       target.closest('[role="button"]') ||
+      target.tagName === 'INPUT' ||
+      target.closest('input') ||
       target.id?.startsWith('handle-') ||
       target.closest('[id^="handle-"]') ||
       target.closest('#three-trackball-canvas') ||
       target.closest('#paper-rocket-trackball-sphere') ||
       target.closest('#paper-rocket-joystick-core') ||
-      target.closest('#paper-rocket-radial-dial')
+      target.closest('#paper-rocket-radial-dial') ||
+      target.closest('#paper-rocket-rotation-ring') ||
+      target.closest('#navigator-target-dropdown-panel') ||
+      target.closest('[role="listbox"]')
     ) {
       return;
     }
 
-    e.preventDefault();
-    isDraggingRef.current = true;
-    dragStartRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      posX: position.x,
-      posY: position.y,
-    };
+    if (!isDragGrip) {
+      return;
+    }
 
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initPosX = position.x;
+    const initPosY = position.y;
+
+    isDraggingRef.current = true;
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (!isDraggingRef.current) return;
-      const dx = moveEvent.clientX - dragStartRef.current.startX;
-      const dy = moveEvent.clientY - dragStartRef.current.startY;
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
       const maxX = Math.max(0, window.innerWidth - 80);
       const maxY = Math.max(0, window.innerHeight - 60);
-      const newX = Math.min(maxX, Math.max(0, dragStartRef.current.posX + dx));
-      const newY = Math.min(maxY, Math.max(0, dragStartRef.current.posY + dy));
+      const newX = Math.min(maxX, Math.max(0, initPosX + dx));
+      const newY = Math.min(maxY, Math.max(0, initPosY + dy));
       setPosition({ x: newX, y: newY });
     };
 
     const handlePointerUp = (upEvent: PointerEvent) => {
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
-        try {
-          (e.currentTarget as HTMLElement).releasePointerCapture(upEvent.pointerId);
-        } catch (_) {}
         setPosition((curr) => {
           try {
             localStorage.setItem('mody_transform_navigator_coords', JSON.stringify(curr));
@@ -308,18 +315,20 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
       }
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
   };
 
   // Auto-clamp on window resize to ensure widget is always within screen bounds
   useEffect(() => {
     const handleWindowResize = () => {
       setPosition((curr) => {
-        const maxX = Math.max(10, window.innerWidth - 275);
-        const maxY = Math.max(10, window.innerHeight - 120);
+        const maxX = Math.max(10, window.innerWidth - 280);
+        const maxY = Math.max(10, window.innerHeight - 340);
         const clampedX = Math.min(maxX, Math.max(10, curr.x));
         const clampedY = Math.min(maxY, Math.max(10, curr.y));
         if (clampedX !== curr.x || clampedY !== curr.y) {
@@ -332,6 +341,29 @@ export const TransformNavigatorComponent: React.FC<TransformNavigatorProps> = ({
     window.addEventListener('resize', handleWindowResize);
     return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
+
+  // Hotkey listener: Ctrl+C / Cmd+C for Copy, Ctrl+V / Cmd+V for Paste
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        if (onCopy) {
+          e.preventDefault();
+          onCopy();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+        if (onPaste && (clipboardCount || 0) > 0) {
+          e.preventDefault();
+          onPaste();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCopy, onPaste, clipboardCount]);
 
   // If collapsed to mini button
   if (!isOpen) {

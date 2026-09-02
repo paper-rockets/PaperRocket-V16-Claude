@@ -144,7 +144,7 @@ export default function App() {
         return saved as ActiveControllerType;
       }
     } catch (_) {}
-    return 'navigator';
+    return 'tactile';
   });
 
   const handleControllerChange = (ctrl: ActiveControllerType) => {
@@ -989,7 +989,10 @@ export default function App() {
           cameraSpherical={cameraSpherical}
           brushSettings={brushSettings}
           onUpdateBrushSettings={setBrushSettings}
-          onReset={handleResetCamera}
+          onReset={() => {
+            handleGizmoReset();
+            handleResetCamera();
+          }}
           onClose={() => handleControllerChange(activeController === 'both' ? 'navigator' : 'hidden')}
           soundEnabled={isSoundEnabled}
           onToggleSound={handleToggleSound}
