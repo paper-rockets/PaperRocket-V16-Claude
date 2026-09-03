@@ -28,6 +28,8 @@ import {
   Touchpad,
   Box,
   Layers,
+  Pipette,
+  Trash2,
 } from 'lucide-react';
 
 interface ViewportProps {
@@ -138,6 +140,26 @@ export const Viewport: React.FC<ViewportProps> = ({
   const isPenDrawingRef = useRef<boolean>(false);
   const lastPenEventTimeRef = useRef<number>(0);
   const [isStylusLockEnabled, setIsStylusLockEnabled] = useState<boolean>(true);
+
+  // Brush Cursor Reticle & Ruler Drag Overlay State
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [rulerDrag, setRulerDrag] = useState<{ startX: number; startY: number; currentX: number; currentY: number; active: boolean } | null>(null);
+
+  // Global Delete / Backspace Keyboard Shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        if (engineRef.current?.deleteActiveSelection()) {
+          triggerHaptic(20);
+          showGestureToast('Deleted', 'Selection removed • Undo available');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // 2. Hardware-Isolated Touch Pointer Map (Strictly segregated from stylus)
   const touchPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -380,22 +402,33 @@ export const Viewport: React.FC<ViewportProps> = ({
       lastNormalizedPos.current.x = coords.x;
       lastNormalizedPos.current.y = coords.y;
       lastPointerPos.current.x = e.clientX;
-      lastPointerPos.current.y = e.clientY;
-
-      // Pointer Selection Tool (Stroke Raycast & Selection)
+      lastPointerPos.current.y = e.clientY;      // Unified Selection Tool (Strokes, Models & Primitives)
       if (tool === 'pointer' || tool === 'select') {
-        const hitStrokeId = engine.raycastStroke(coords.x, coords.y);
-        if (hitStrokeId) {
-          engine.selectStroke(hitStrokeId);
+        const res = engine.raycastSelection(coords.x, coords.y);
+        if (res.type === 'stroke') {
           triggerHaptic(20);
-          showGestureToast('Curve Selected', `ID: ${hitStrokeId.slice(0, 8)}... (Press Del to remove)`);
+          showGestureToast('Curve Selected', `ID: ${res.id?.slice(0, 8)}... (Press Del or Trash to remove)`);
+        } else if (res.type === 'model') {
+          triggerHaptic(20);
+          showGestureToast('Object Selected', `${res.name || '3D Object'} (Press Del or Trash to remove)`);
         } else {
           engine.selectStroke(null);
         }
         return;
       }
 
-      // Brush DNA Picker tool (Clones complete 3D stroke DNA)
+      // Ruler / Straight Line Drag Setup
+      if (brushSettings.straightLineMode) {
+        setRulerDrag({
+          startX: e.clientX,
+          startY: e.clientY,
+          currentX: e.clientX,
+          currentY: e.clientY,
+          active: true,
+        });
+      }
+
+      // Brush DNA Picker tool (Clones complete 3D stroke DNA and returns to Brush mode)
       if (tool === 'brush_picker') {
         const dna = engine.sampleHolisticDNA(coords.x, coords.y, e.clientX, e.clientY);
         if (dna) {
@@ -418,10 +451,11 @@ export const Viewport: React.FC<ViewportProps> = ({
           if (onColorPick) {
             onColorPick(dna.colorHex);
           }
+          onSelectTool?.('brush');
           triggerHaptic(30);
           showGestureToast(
             'Brush DNA Injected',
-            `${dna.profile.toUpperCase()} • ${dna.materialType.toUpperCase()}`
+            `${dna.profile.toUpperCase()} • ${dna.colorHex} (Returned to Brush)`
           );
         }
         return;
@@ -574,35 +608,53 @@ export const Viewport: React.FC<ViewportProps> = ({
       lastPointerPos.current.y = e.clientY;
 
       if (tool === 'pointer' || tool === 'select') {
-        const hitStrokeId = engine.raycastStroke(coords.x, coords.y);
-        if (hitStrokeId) {
-          engine.selectStroke(hitStrokeId);
+        const res = engine.raycastSelection(coords.x, coords.y);
+        if (res.type === 'stroke') {
           triggerHaptic(20);
-          showGestureToast('Curve Selected', `ID: ${hitStrokeId.slice(0, 8)}...`);
+          showGestureToast('Curve Selected', `ID: ${res.id?.slice(0, 8)}... (Press Del or Trash to remove)`);
+        } else if (res.type === 'model') {
+          triggerHaptic(20);
+          showGestureToast('Object Selected', `${res.name || '3D Object'} (Press Del or Trash to remove)`);
         } else {
           engine.selectStroke(null);
         }
         return;
       }
 
+      // Ruler / Straight Line Drag Setup
+      if (brushSettings.straightLineMode) {
+        setRulerDrag({
+          startX: e.clientX,
+          startY: e.clientY,
+          currentX: e.clientX,
+          currentY: e.clientY,
+          active: true,
+        });
+      }
+
       if (tool === 'brush_picker') {
         const dna = engine.sampleHolisticDNA(coords.x, coords.y, e.clientX, e.clientY);
-        if (dna && onUpdateBrushSettings) {
-          onUpdateBrushSettings({
-            color: dna.colorHex,
-            size: dna.size,
-            opacity: dna.opacity,
-            roughness: dna.roughness,
-            metalness: dna.metalness,
-            emissiveIntensity: dna.emissiveIntensity,
-            materialType: dna.materialType,
-            profile: dna.profile,
-            patternType: dna.patternType,
-            patternScale: dna.patternScale,
-            patternIntensity: dna.patternIntensity,
-            shaderEffect: dna.shaderEffect,
-          });
+        if (dna) {
+          if (onUpdateBrushSettings) {
+            onUpdateBrushSettings({
+              color: dna.colorHex,
+              size: dna.size,
+              opacity: dna.opacity,
+              roughness: dna.roughness,
+              metalness: dna.metalness,
+              emissiveIntensity: dna.emissiveIntensity,
+              materialType: dna.materialType,
+              profile: dna.profile,
+              patternType: dna.patternType,
+              patternScale: dna.patternScale,
+              patternIntensity: dna.patternIntensity,
+              shaderEffect: dna.shaderEffect,
+            });
+          }
           onColorPick?.(dna.colorHex);
+          onSelectTool?.('brush');
+          triggerHaptic(30);
+          showGestureToast('Brush DNA Injected', `${dna.profile.toUpperCase()} • ${dna.colorHex} (Returned to Brush)`);
         }
         return;
       }
@@ -620,6 +672,12 @@ export const Viewport: React.FC<ViewportProps> = ({
     e.preventDefault();
     const engine = engineRef.current;
     if (!engine) return;
+
+    // Track 2D screen coordinates for cursor reticle preview and visual ruler overlay
+    setCursorPos({ x: e.clientX, y: e.clientY, visible: true });
+    if (rulerDrag?.active) {
+      setRulerDrag((prev) => (prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null));
+    }
 
     // Auto-reveal camera navigation pod when cursor approaches bottom-right corner
     if (!isPointerDown.current) {
@@ -837,6 +895,9 @@ export const Viewport: React.FC<ViewportProps> = ({
     } catch (_) {}
 
     const engine = engineRef.current;
+    if (rulerDrag?.active) {
+      setRulerDrag(null);
+    }
 
     // -----------------------------------------------------------------------
     // BRANCH 1: STYLUS / PEN UP
@@ -987,6 +1048,8 @@ export const Viewport: React.FC<ViewportProps> = ({
         }
       }}
       onPointerLeave={(e) => {
+        setCursorPos((prev) => ({ ...prev, visible: false }));
+        if (rulerDrag?.active) setRulerDrag(null);
         if (e.pointerType === 'pen') {
           penInProximityRef.current = false;
           if (!isPenDrawingRef.current) {
@@ -998,6 +1061,86 @@ export const Viewport: React.FC<ViewportProps> = ({
       onContextMenu={handleContextMenu}
       className="relative w-full h-full touch-none select-none cursor-crosshair overflow-hidden"
     >
+      {/* Dynamic 2D / Screen-Space Brush Reticle & Cursor Radius Indicator */}
+      {cursorPos.visible && !rulerDrag?.active && (tool === 'brush' || tool === 'eraser') && (
+        <svg className="pointer-events-none fixed inset-0 w-full h-full z-20 overflow-visible">
+          <circle
+            cx={cursorPos.x}
+            cy={cursorPos.y}
+            r={Math.max(2, (brushSettings.size * 30) / 2)}
+            fill="none"
+            stroke={tool === 'eraser' ? '#f43f5e' : (brushSettings.color || '#38bdf8')}
+            strokeWidth={1.5}
+            strokeDasharray="3 2"
+            className="opacity-80"
+          />
+          <circle
+            cx={cursorPos.x}
+            cy={cursorPos.y}
+            r={1.2}
+            fill={tool === 'eraser' ? '#f43f5e' : (brushSettings.color || '#38bdf8')}
+          />
+        </svg>
+      )}
+
+      {/* Visual Ruler & Precision Straight-Line Drafting Overlay */}
+      {rulerDrag?.active && (
+        <svg className="pointer-events-none fixed inset-0 w-full h-full z-20 overflow-visible">
+          <line
+            x1={rulerDrag.startX}
+            y1={rulerDrag.startY}
+            x2={rulerDrag.currentX}
+            y2={rulerDrag.currentY}
+            stroke="#38bdf8"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />
+          <circle cx={rulerDrag.startX} cy={rulerDrag.startY} r={4} fill="#38bdf8" />
+          <circle cx={rulerDrag.currentX} cy={rulerDrag.currentY} r={4} fill="#38bdf8" />
+          <g transform={`translate(${(rulerDrag.startX + rulerDrag.currentX) / 2}, ${(rulerDrag.startY + rulerDrag.currentY) / 2 - 14})`}>
+            <rect
+              x={-50}
+              y={-11}
+              width={100}
+              height={22}
+              rx={6}
+              fill="rgba(15, 23, 42, 0.9)"
+              stroke="#38bdf8"
+              strokeWidth={1}
+            />
+            <text
+              x={0}
+              y={4}
+              fill="#ffffff"
+              fontSize={10}
+              fontFamily="monospace"
+              fontWeight="bold"
+              textAnchor="middle"
+            >
+              {`${(Math.hypot(rulerDrag.currentX - rulerDrag.startX, rulerDrag.currentY - rulerDrag.startY) * 0.26).toFixed(1)} mm • ${Math.round((Math.atan2(rulerDrag.currentY - rulerDrag.startY, rulerDrag.currentX - rulerDrag.startX) * 180) / Math.PI)}°`}
+            </text>
+          </g>
+        </svg>
+      )}
+
+      {/* Floating Sample DNA Banner with Clear 1-Click Exit */}
+      {tool === 'brush_picker' && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-sky-500 text-black px-4 py-2 rounded-full font-bold shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top duration-200 select-none">
+          <Pipette className="w-4 h-4 stroke-[2.5]" />
+          <span className="text-xs">Sampling 3D Stroke DNA • Tap any curve to copy DNA</span>
+          <button
+            type="button"
+            onClick={() => {
+              onSelectTool?.('brush');
+              showGestureToast('Exited DNA Sampler', 'Returned to Brush mode');
+            }}
+            className="bg-black text-white px-2.5 py-1 rounded-full text-xs font-bold hover:bg-zinc-800 transition-colors cursor-pointer"
+          >
+            Cancel ✕
+          </button>
+        </div>
+      )}
+
       {/* 3-Finger Gesture Floating Live Toast / HUD Indicator */}
       {gestureToast && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in zoom-in-95 duration-150">

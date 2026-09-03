@@ -199,8 +199,14 @@ export const BrushPickerModal: React.FC<BrushPickerModalProps> = ({
   };
 
   const handleActivateBrushSampler = () => {
+    if (tool === 'brush_picker') {
+      setTool('brush');
+      setFeedbackToast('Brush DNA Sampler Deactivated');
+      setTimeout(() => setFeedbackToast(null), 2000);
+      return;
+    }
     setTool('brush_picker');
-    setFeedbackToast('Brush DNA Sampler Active: Click any 3D stroke in scene');
+    setFeedbackToast('Brush DNA Sampler Active: Click any 3D curve to sample (Click again to cancel)');
     setTimeout(() => setFeedbackToast(null), 3500);
   };
 
@@ -241,15 +247,15 @@ export const BrushPickerModal: React.FC<BrushPickerModalProps> = ({
             <button
               type="button"
               onClick={handleActivateBrushSampler}
-              className={`py-1 px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+              className={`py-1 px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                 tool === 'brush_picker'
-                  ? 'bg-sky-400 text-black font-bold'
+                  ? 'bg-sky-400 text-black font-bold ring-2 ring-sky-300'
                   : theme === 'light' ? 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700' : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'
               }`}
-              title="Sample Complete Stroke DNA from Viewport"
+              title={tool === 'brush_picker' ? 'Click to turn off sampler' : 'Sample Complete Stroke DNA from Viewport'}
             >
               <Pipette className="w-3.5 h-3.5" />
-              <span>Sample DNA</span>
+              <span>{tool === 'brush_picker' ? 'Cancel Sampling' : 'Sample DNA'}</span>
             </button>
 
             <button
@@ -530,8 +536,21 @@ export const BrushPickerModal: React.FC<BrushPickerModalProps> = ({
 
         {/* Footer Toast feedback */}
         {feedbackToast && (
-          <div className="px-4 py-2 bg-sky-500/10 border-t border-sky-500/30 text-[11px] text-sky-400 text-center font-medium animate-in fade-in duration-100">
-            {feedbackToast}
+          <div className="px-4 py-2 bg-sky-500/15 border-t border-sky-500/30 text-[11px] text-sky-400 flex items-center justify-between font-medium animate-in fade-in duration-100">
+            <span>{feedbackToast}</span>
+            {tool === 'brush_picker' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTool('brush');
+                  setFeedbackToast('Sampler Deactivated');
+                  setTimeout(() => setFeedbackToast(null), 1500);
+                }}
+                className="px-2 py-0.5 rounded bg-black/50 hover:bg-black/80 text-white font-bold text-[10px] ml-2 transition-colors cursor-pointer"
+              >
+                Turn Off ✕
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -16,13 +16,16 @@ interface ThreeTrackballProps {
   onVelocityChange?: (velocity: number) => void;
   soundEnabled: boolean;
   size?: number;
+  theme?: 'light' | 'dark';
 }
 
-// Singleton cached texture to avoid re-generating canvas and textures on every toggle
-let cachedSphereTexture: THREE.CanvasTexture | null = null;
+// Cached textures for light and dark themes
+let cachedSphereDarkTexture: THREE.CanvasTexture | null = null;
+let cachedSphereLightTexture: THREE.CanvasTexture | null = null;
 
-function getSharedSphereTexture(): THREE.CanvasTexture {
-  if (cachedSphereTexture) return cachedSphereTexture;
+function getSharedSphereTexture(isLight = false): THREE.CanvasTexture {
+  if (isLight && cachedSphereLightTexture) return cachedSphereLightTexture;
+  if (!isLight && cachedSphereDarkTexture) return cachedSphereDarkTexture;
 
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -30,25 +33,33 @@ function getSharedSphereTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d');
   if (ctx) {
     const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    bgGrad.addColorStop(0, '#18181b');
-    bgGrad.addColorStop(0.5, '#202024');
-    bgGrad.addColorStop(1, '#161619');
+    if (isLight) {
+      bgGrad.addColorStop(0, '#f8fafc');
+      bgGrad.addColorStop(0.5, '#e2e8f0');
+      bgGrad.addColorStop(1, '#cbd5e1');
+    } else {
+      bgGrad.addColorStop(0, '#18181b');
+      bgGrad.addColorStop(0.5, '#202024');
+      bgGrad.addColorStop(1, '#161619');
+    }
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Subtle longitude meridians (every 45 degrees to match quadrant divisions)
+    // Longitude meridians (every 45 degrees)
     for (let i = 0; i < 8; i++) {
       const x = (i / 8) * canvas.width;
       const isPrime = i === 0 || i === 4;
       ctx.lineWidth = isPrime ? 1.5 : 1;
-      ctx.strokeStyle = isPrime ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = isLight
+        ? isPrime ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.08)'
+        : isPrime ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)';
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
       ctx.stroke();
     }
 
-    // Equator & 45-degree Latitude parallels
+    // Equator & Latitude parallels
     const lats = [
       { deg: 0, isMajor: true },
       { deg: 45, isMajor: false },
@@ -59,27 +70,29 @@ function getSharedSphereTexture(): THREE.CanvasTexture {
     lats.forEach(({ deg, isMajor }) => {
       const y = ((deg + 90) / 180) * canvas.height;
       ctx.lineWidth = isMajor ? 1.5 : 1;
-      ctx.strokeStyle = isMajor ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = isLight
+        ? isMajor ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.08)'
+        : isMajor ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)';
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(canvas.width, y);
       ctx.stroke();
     });
 
-    // Refined intersection tick dots at 45-degree intersections
+    // Intersection tick dots
     for (let i = 0; i < 8; i++) {
       const x = (i / 8) * canvas.width;
       [0, 45, -45].forEach((deg) => {
         const y = ((deg + 90) / 180) * canvas.height;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.fillStyle = isLight ? 'rgba(0, 0, 0, 0.25)' : 'rgba(255, 255, 255, 0.22)';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, Math.PI * 2);
         ctx.fill();
       });
     }
 
-    // Fine tactile micro-stipple for physical matte grip feel
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+    // Micro-stipple
+    ctx.fillStyle = isLight ? 'rgba(0, 0, 0, 0.03)' : 'rgba(255, 255, 255, 0.02)';
     for (let j = 0; j < 1200; j++) {
       const rx = Math.random() * canvas.width;
       const ry = Math.random() * canvas.height;
@@ -87,10 +100,12 @@ function getSharedSphereTexture(): THREE.CanvasTexture {
     }
   }
 
-  cachedSphereTexture = new THREE.CanvasTexture(canvas);
-  cachedSphereTexture.wrapS = THREE.RepeatWrapping;
-  cachedSphereTexture.wrapT = THREE.ClampToEdgeWrapping;
-  return cachedSphereTexture;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  if (isLight) cachedSphereLightTexture = tex;
+  else cachedSphereDarkTexture = tex;
+  return tex;
 }
 
 export const ThreeTrackball: React.FC<ThreeTrackballProps> = ({
@@ -101,6 +116,7 @@ export const ThreeTrackball: React.FC<ThreeTrackballProps> = ({
   onVelocityChange,
   soundEnabled,
   size = 196,
+  theme = 'dark',
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
@@ -155,19 +171,19 @@ export const ThreeTrackball: React.FC<ThreeTrackballProps> = ({
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Balanced studio lighting matching dark tactile palette
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+    // Balanced studio lighting matching tactile palette
+    const ambientLight = new THREE.AmbientLight(0xffffff, theme === 'light' ? 0.95 : 0.65);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, theme === 'light' ? 1.1 : 0.85);
     dirLight1.position.set(2.5, 3.5, 3.5);
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0x52525b, 0.40);
+    const dirLight2 = new THREE.DirectionalLight(theme === 'light' ? 0x94a3b8 : 0x52525b, 0.40);
     dirLight2.position.set(-2.5, -1.5, 1.5);
     scene.add(dirLight2);
 
-    const rimLight = new THREE.DirectionalLight(0x71717a, 0.45);
+    const rimLight = new THREE.DirectionalLight(theme === 'light' ? 0xcbd5e1 : 0x71717a, 0.45);
     rimLight.position.set(0, 3, -2);
     scene.add(rimLight);
 
@@ -176,24 +192,24 @@ export const ThreeTrackball: React.FC<ThreeTrackballProps> = ({
     scene.add(sphereGroup);
     sphereRef.current = sphereGroup;
 
-    // Use shared texture singleton
-    const sphereTexture = getSharedSphereTexture();
+    // Use shared texture matching theme
+    const sphereTexture = getSharedSphereTexture(theme === 'light');
 
     // Main Sphere Mesh (32x32 segments for lightweight 60fps performance)
     const sphereRadius = 1.35;
     const sphereGeom = new THREE.SphereGeometry(sphereRadius, 32, 32);
     const sphereMat = new THREE.MeshStandardMaterial({
       map: sphereTexture,
-      roughness: 0.58,
-      metalness: 0.32,
+      roughness: theme === 'light' ? 0.4 : 0.58,
+      metalness: theme === 'light' ? 0.15 : 0.32,
     });
     const mainSphere = new THREE.Mesh(sphereGeom, sphereMat);
     sphereGroup.add(mainSphere);
 
-    // Dark inset socket ring with subtle metallic bevel
+    // Inset socket ring with subtle bevel
     const socketGeom = new THREE.TorusGeometry(1.40, 0.08, 16, 32);
     const socketMat = new THREE.MeshStandardMaterial({
-      color: 0x18181b,
+      color: theme === 'light' ? 0xe2e8f0 : 0x18181b,
       roughness: 0.7,
       metalness: 0.3,
     });

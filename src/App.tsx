@@ -886,7 +886,12 @@ export default function App() {
           setNavigatorSensitivity(s);
           engine?.setNavigatorSensitivity(s);
         }}
-        onOpenLayers={() => setIsLayersOpen((prev) => !prev)}
+        onOpenLayers={() => {
+          setIsLayersOpen((prev) => {
+            if (!prev) setIsSettingsOpen(false);
+            return !prev;
+          });
+        }}
         onToggleNavigator={() => handleControllerChange(activeController === 'navigator' ? 'tactile' : activeController === 'tactile' ? 'hidden' : 'navigator')}
         activeController={activeController}
         onChangeController={handleControllerChange}
@@ -939,7 +944,12 @@ export default function App() {
         onOpenScaffolding={() => setIsScaffoldingOpen(true)}
         onOpenClipboard={() => setIsClipboardOpen(true)}
         onOpenMobileConnect={() => setIsMobileConnectOpen(true)}
-        onOpenBrushSettings={() => setIsSettingsOpen((prev) => !prev)}
+        onOpenBrushSettings={() => {
+          setIsSettingsOpen((prev) => {
+            if (!prev) setIsLayersOpen(false);
+            return !prev;
+          });
+        }}
         onOpenColorStudio={() => setIsColorStudioOpen(true)}
         onSaveProject={handleSaveProject}
         onLoadProject={handleLoadProject}
@@ -990,8 +1000,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 3D Navigation Controllers (Option 1: Transform Navigator Card, Option 2: Paper Rocket Tactile Spatial Circular Wheel) */}
-      {gizmoMode !== 'Hidden' && (activeController === 'navigator' || activeController === 'both') && (
+      {/* 3D Navigation Controllers: Strictly ONE controller at a time (Never stack both) */}
+      {gizmoMode !== 'Hidden' && activeController === 'navigator' && (
         <TransformNavigator
           initialMode="2d"
           theme={theme}
@@ -1006,7 +1016,7 @@ export default function App() {
             setNavigatorSensitivity(s);
             engine?.setNavigatorSensitivity(s);
           }}
-          onClose={() => handleControllerChange(activeController === 'both' ? 'tactile' : 'hidden')}
+          onClose={() => handleControllerChange('hidden')}
           onCopy={handleCopyStrokes}
           onPaste={handlePasteStrokes}
           clipboardCount={clipboardCount}
@@ -1030,7 +1040,7 @@ export default function App() {
         />
       )}
 
-      {gizmoMode !== 'Hidden' && (activeController === 'tactile' || activeController === 'both') && (
+      {gizmoMode !== 'Hidden' && activeController === 'tactile' && (
         <PaperRocketTactileWheel
           engine={engine}
           theme={theme}
@@ -1040,7 +1050,7 @@ export default function App() {
             handleGizmoReset();
             handleResetCamera();
           }}
-          onClose={() => handleControllerChange(activeController === 'both' ? 'navigator' : 'hidden')}
+          onClose={() => handleControllerChange('hidden')}
           soundEnabled={isSoundEnabled}
           onToggleSound={handleToggleSound}
           isLocked={isGizmoLocked}

@@ -87,6 +87,8 @@ import {
   Save,
   Upload,
   LayoutGrid,
+  Trash2,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { isFullscreen, toggleFullscreen, subscribeFullscreenChange } from '../utils/fullscreen';
 
@@ -399,13 +401,9 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
     }
   };
 
-  const scheduleAutoCollapse = (delay = 2000) => {
-    if (isPinned) return;
-    clearCollapseTimer();
-    autoCollapseTimerRef.current = window.setTimeout(() => {
-      setIsMinimized(true);
-      closeAllShelves();
-    }, delay);
+  // Disabled aggressive auto-collapse so menus stay open until user dismisses them
+  const scheduleAutoCollapse = (_delay = 2000) => {
+    return;
   };
 
   const handleMouseEnter = () => {
@@ -413,9 +411,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
   };
 
   const handleMouseLeave = () => {
-    if (!isPinned && !isMinimized) {
-      scheduleAutoCollapse(1800);
-    }
+    // Keep menus open; do not auto-close on mouse leave
   };
 
   const handleSelectColor = (hex: string) => {
@@ -479,13 +475,8 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
     }
 
     if (mesh) {
-      engine.setModelObject(mesh, name);
+      engine.addPrimitiveToScene(mesh, name);
       if (onSelectPrimitiveName) onSelectPrimitiveName(name);
-    }
-
-    // Auto-collapse after spawning if not pinned
-    if (!isPinned) {
-      scheduleAutoCollapse(1200);
     }
   };
 
@@ -616,136 +607,40 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
           {/* Divider */}
           <div className={`w-6 h-[1px] ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
 
-          {/* Lock Constraints Button */}
-          {onToggleLock && (
-            <button
-              type="button"
-              onClick={onToggleLock}
-              className={`p-2 rounded-xl transition-all cursor-pointer ${
-                isGizmoLocked
-                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
-                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-              title={isGizmoLocked ? 'Transform Constraints: LOCKED (Click to unlock)' : 'Transform Constraints: Unlocked (Click to lock)'}
-            >
-              {isGizmoLocked ? <Lock className="w-4 h-4 stroke-[2]" /> : <Unlock className="w-4 h-4 stroke-[2]" />}
-            </button>
-          )}
+          {/* Delete Selection Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (engine?.deleteActiveSelection()) {
+                triggerHaptic(20);
+              }
+            }}
+            className={`p-2 rounded-xl transition-all cursor-pointer ${
+              theme === 'light'
+                ? 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
+                : 'text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
+            }`}
+            title="Delete Selected Curve or Model (Del)"
+          >
+            <Trash2 className="w-4 h-4 stroke-[2]" />
+          </button>
 
-          {/* Copy Curves */}
-          {onCopyStrokes && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              className={`p-2 rounded-xl transition-all cursor-pointer ${
-                copyFeedback
-                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold' : 'bg-white text-zinc-950 font-bold'
-                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-              title="Copy Curves (Ctrl+C)"
-            >
-              <Copy className="w-4 h-4 stroke-[2]" />
-            </button>
-          )}
-
-          {/* Paste Curves */}
-          {onPasteStrokes && (
-            <button
-              type="button"
-              onClick={handlePaste}
-              className={`p-2 rounded-xl transition-all relative cursor-pointer ${
-                pasteFeedback
-                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold' : 'bg-white text-zinc-950 font-bold'
-                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-              title={`Paste Curves (Ctrl+V)${clipboardCount > 0 ? ` • ${clipboardCount} copied` : ''}`}
-            >
-              <ClipboardPaste className="w-4 h-4 stroke-[2]" />
-              {clipboardCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 px-1 py-0.2 rounded-full bg-sky-500 text-[8px] font-mono font-bold text-black leading-tight">
-                  {clipboardCount}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Navigator Sensitivity Popover */}
-          {onSensitivityChange && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowSensitivityPopover((prev) => !prev)}
-                className={`p-2 rounded-xl transition-all cursor-pointer ${
-                  showSensitivityPopover
-                    ? 'bg-sky-500 text-black font-bold shadow-sm'
-                    : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
-                title={`Navigator Sensitivity: ${navigatorSensitivity.toFixed(2)}x`}
-              >
-                <SlidersHorizontal className="w-4 h-4 stroke-[2]" />
-              </button>
-
-              {showSensitivityPopover && (
-                <div
-                  className={`absolute left-full top-0 ml-2 w-48 p-2.5 rounded-2xl backdrop-blur-2xl border shadow-2xl z-50 text-xs flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-100 ${
-                    theme === 'light' ? 'bg-white/98 border-neutral-200 text-neutral-800' : 'bg-[#14151a]/98 border-white/15 text-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[10px] font-mono">
-                    <span className="font-bold">SENSITIVITY</span>
-                    <span className="text-sky-400 font-bold">{navigatorSensitivity.toFixed(2)}x</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="2.0"
-                    step="0.05"
-                    value={navigatorSensitivity}
-                    onChange={(e) => onSensitivityChange?.(parseFloat(e.target.value))}
-                    className="w-full accent-sky-400 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-                  />
-                  <div className="flex items-center justify-between text-[8.5px] font-mono text-zinc-500">
-                    <button type="button" onClick={() => onSensitivityChange?.(0.25)} className="hover:text-white">0.25x</button>
-                    <button type="button" onClick={() => onSensitivityChange?.(0.5)} className="hover:text-white font-bold text-sky-400">0.5x (Def)</button>
-                    <button type="button" onClick={() => onSensitivityChange?.(1.0)} className="hover:text-white">1.0x</button>
-                    <button type="button" onClick={() => onSensitivityChange?.(2.0)} className="hover:text-white">2.0x</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Finger-Pen Mode Toggle */}
-          {onToggleFingerPenMode && (
-            <button
-              type="button"
-              onClick={() => onToggleFingerPenMode(!fingerPenMode)}
-              className={`p-2 rounded-xl transition-all cursor-pointer ${
-                fingerPenMode
-                  ? theme === 'light' ? 'bg-neutral-900 text-white font-bold shadow-sm' : 'bg-white text-zinc-950 font-bold shadow-sm'
-                  : theme === 'light' ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100' : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-              title={`Finger-Pen Touch Mode: ${fingerPenMode ? 'ON (Stylus draws, fingers pan)' : 'OFF'}`}
-            >
-              <PenTool className="w-4 h-4 stroke-[2]" />
-            </button>
-          )}
-
-          {/* Clone Button */}
-          {onCloneModel && (
-            <button
-              type="button"
-              onClick={onCloneModel}
-              className={`p-2 rounded-xl transition-colors cursor-pointer ${
-                theme === 'light'
-                  ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/10'
-              }`}
-              title="Clone 3D Model / Strokes"
-            >
-              <Copy className="w-4 h-4 stroke-[2]" />
-            </button>
-          )}
+          {/* Snap to Ground */}
+          <button
+            type="button"
+            onClick={() => {
+              engine?.snapActiveToGround();
+              triggerHaptic(15);
+            }}
+            className={`p-2 rounded-xl transition-all cursor-pointer ${
+              theme === 'light'
+                ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+            }`}
+            title="Snap Model to Ground Grid"
+          >
+            <ArrowDownToLine className="w-4 h-4 stroke-[2]" />
+          </button>
 
           {/* Divider */}
           <div className={`w-6 h-[1px] ${theme === 'light' ? 'bg-neutral-200' : 'bg-zinc-800'}`} />
@@ -849,6 +744,41 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
                 title="3D Primitives (Cube, Sphere, Cylinder, Torus, Capsule, Cone, Pyramid, Disk)"
               >
                 <Box className="w-4 h-4 stroke-[1.8]" />
+              </button>
+
+              {/* Snap to Ground Grid */}
+              <button
+                type="button"
+                onClick={() => {
+                  engine?.snapActiveToGround();
+                  triggerHaptic(15);
+                }}
+                className={`p-1.5 rounded-lg transition-all ${
+                  theme === 'light'
+                    ? 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+                title="Auto-Snap Active Model to Ground Grid"
+              >
+                <ArrowDownToLine className="w-4 h-4 stroke-[2]" />
+              </button>
+
+              {/* Delete Active Selection */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (engine?.deleteActiveSelection()) {
+                    triggerHaptic(20);
+                  }
+                }}
+                className={`p-1.5 rounded-lg transition-all ${
+                  theme === 'light'
+                    ? 'text-rose-500 hover:text-rose-700 hover:bg-rose-50'
+                    : 'text-rose-400 hover:text-rose-300 hover:bg-rose-500/10'
+                }`}
+                title="Delete Selected Curve or Model (Del)"
+              >
+                <Trash2 className="w-4 h-4 stroke-[2]" />
               </button>
             </div>
 

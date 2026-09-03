@@ -1323,15 +1323,20 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           </>
         )}
 
-        {/* 2. TACTILE BALL MODE: Pure 3D Dark Graphite Trackball */}
+        {/* 2. TACTILE BALL MODE: Pure 3D Trackball */}
         {mode === 'tactile_ball' && (
           <div
             id="paper-rocket-trackball-sphere"
             className={`relative ${
               isBiggerUI ? 'w-[214px] h-[214px]' : 'w-[196px] h-[196px]'
-            } rounded-full bg-[#121214] border border-neutral-800 shadow-[inset_0_4px_24px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.06)] flex items-center justify-center overflow-hidden z-20`}
+            } rounded-full ${
+              isLight
+                ? 'bg-gradient-to-b from-slate-100 to-slate-200 border border-neutral-300 shadow-[inset_0_4px_20px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.05)]'
+                : 'bg-[#121214] border border-neutral-800 shadow-[inset_0_4px_24px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.06)]'
+            } flex items-center justify-center overflow-hidden z-20`}
           >
             <ThreeTrackball
+              theme={theme}
               yaw={spatialState.yaw}
               pitch={spatialState.pitch}
               soundEnabled={soundEnabled}

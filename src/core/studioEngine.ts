@@ -140,6 +140,31 @@ export interface RaycastResult {
   mesh?: THREE.Mesh;
 }
 
+export type UnifiedHistoryEntry =
+  | {
+      kind: 'stroke';
+      action: { type: 'create' | 'erase'; strokes: StrokeDescriptor[] };
+      timestamp: number;
+    }
+  | {
+      kind: 'transform';
+      scope: TransformTargetScope;
+      inverseMatrix: THREE.Matrix4;
+      forwardMatrix: THREE.Matrix4;
+      layerId?: string;
+      timestamp: number;
+    }
+  | {
+      kind: 'uv';
+      timestamp: number;
+    }
+  | {
+      kind: 'primitive';
+      objectId: string;
+      object: THREE.Object3D;
+      timestamp: number;
+    };
+
 declare global {
   interface Window {
     RayEngine?: {
@@ -163,11 +188,28 @@ export class StudioEngine {
   private strokeSmoother: StrokeSmoother = new StrokeSmoother();
   private lastHitMesh: THREE.Mesh | null = null;
   public uvEngine: UVPaintingEngine;
-  public postEngine: PostProcessingEngine;
+  private postProcessing: PostProcessingEngine;
   public skyEngine: ProceduralSkyEngine;
   public liquifyEngine: VolumetricLiquifyEngine;
   public loftEngine: LoftGuideEngine;
   public scaffoldingEngine: ScaffoldingEngine;
+
+  // Visual & Lighting
+  private ambientIntensity: number = 0.5;
+  private directionalIntensity: number = 1.0;
+  private modelColor: string = '#ffffff';
+  private modelRoughness: number = 0.5;
+  private modelMetalness: number = 0.0;
+  private modelOpacity: number = 1.0;
+  private modelWireframeOpacity: number = 0.0;
+  private isModelVisible: boolean = true;
+
+  // Groups
+  private modelRoot: THREE.Group;
+  private strokeRoot: THREE.Group;
+  private worldStrokeRoot: THREE.Group;
+  private helperRoot: THREE.Group;
+  private lightsRoot: THREE.Group;
   private customMirrorOrigin: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   private customMirrorNormal: THREE.Vector3 = new THREE.Vector3(1, 0, 0);
   private customMirrorEnabled: boolean = false;
@@ -177,15 +219,6 @@ export class StudioEngine {
   private arFloorGrid: THREE.GridHelper | null = null;
   private dracoLoader: DRACOLoader | null = null;
   private modelDisplayMode: ModelDisplayMode = 'texture';
-  private modelOpacity: number = 1.0;
-  private modelWireframeOpacity: number = 0.0;
-  private isModelVisible: boolean = true;
-
-  // Groups
-  private modelRoot: THREE.Group;
-  private strokeRoot: THREE.Group;
-  private helperRoot: THREE.Group;
-  private lightsRoot: THREE.Group;
 
   // Model & Mesh references
   private targetMeshes: THREE.Mesh[] = [];
@@ -214,6 +247,8 @@ export class StudioEngine {
   private strokes: Map<string, { descriptor: StrokeDescriptor; meshes: THREE.Mesh[] }> = new Map();
   private undoStack: Array<{ type: 'create' | 'erase'; strokes: StrokeDescriptor[] }> = [];
   private redoStack: Array<{ type: 'create' | 'erase'; strokes: StrokeDescriptor[] }> = [];
+  private historyUndoStack: UnifiedHistoryEntry[] = [];
+  private historyRedoStack: UnifiedHistoryEntry[] = [];
   private activeStrokeBatch: StrokeDescriptor[] = [];
   private activeVacuumPurgedBatch: StrokeDescriptor[] = [];
   private lastScreenCoords: { x: number; y: number } | null = null;
@@ -448,8 +483,13 @@ export class StudioEngine {
     this.strokeRoot = new THREE.Group();
     this.strokeRoot.renderOrder = 5; // Stroke geometry renders with depthTest=true, depthWrite=false
 
-    // Attach strokes directly as child of modelRoot so all strokes stay locked to the model in 3D space
+    // Attach strokes directly as child of modelRoot so surface strokes stay locked to the model in 3D space
     this.modelRoot.add(this.strokeRoot);
+
+    // Dedicated world-space stroke root for mid-air drawings (independent of model movements)
+    this.worldStrokeRoot = new THREE.Group();
+    this.worldStrokeRoot.renderOrder = 5;
+    this.scene.add(this.worldStrokeRoot);
 
     this.lightsRoot = new THREE.Group();
 
@@ -922,6 +962,180 @@ export class StudioEngine {
    */
   public loadDirectObject3D(obj: THREE.Object3D, name: string): void {
     this.setModelObject(obj, name);
+  }
+
+  /**
+   * Non-destructive primitive spawner: adds a 3D primitive without clearing
+   * existing models or wiping away strokes.
+   */
+  public addPrimitiveToScene(obj: THREE.Object3D, name: string): void {
+    this.ensureBaselineLighting();
+
+    // If only the empty default drawing canvas is in the scene and no strokes exist, detach it
+    if (this.drawingPlaneMesh && this.strokes.size === 0) {
+      const existingPlane = this.modelRoot.getObjectByName('DrawingPlaneCanvas');
+      if (existingPlane) {
+        this.modelRoot.remove(existingPlane);
+      }
+      this.drawingPlaneMesh = null;
+    }
+
+    obj.name = name;
+    this.modelRoot.add(obj);
+
+    // Compute normals, bounding box, and bounding sphere
+    let vertexCount = 0;
+    let triangleCount = 0;
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry) {
+        this.targetMeshes.push(child);
+        const geom = child.geometry;
+        if (!geom.attributes.normal) geom.computeVertexNormals();
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+        try {
+          if (typeof (geom as any).computeBoundsTree === 'function') {
+            (geom as any).computeBoundsTree();
+          }
+        } catch (_) {}
+        vertexCount += geom.attributes.position ? geom.attributes.position.count : 0;
+        triangleCount += geom.index ? geom.index.count / 3 : (geom.attributes.position?.count || 0) / 3;
+      }
+    });
+
+    // Auto-snap new primitive so its base rests flush on the ground grid (y = -1.2)
+    const box = new THREE.Box3().setFromObject(obj);
+    if (!box.isEmpty()) {
+      const deltaY = -1.2 - box.min.y;
+      obj.position.y += deltaY;
+      obj.updateMatrixWorld(true);
+    }
+
+    this.activeSelectedModelId = obj.uuid;
+    this.activeModelName = name;
+
+    // Record into unified history
+    this.historyUndoStack.push({
+      kind: 'primitive',
+      objectId: obj.uuid,
+      object: obj,
+      timestamp: Date.now(),
+    });
+    this.historyRedoStack = [];
+
+    this.notifyModelsChanged();
+    this.notifyHistory();
+    this.markDirty();
+  }
+
+  /**
+   * Snaps the active 3D model or primitive to rest flush on the ground grid (y = -1.2)
+   */
+  public snapActiveToGround(targetScope: TransformTargetScope = 'model'): void {
+    const groundY = -1.2;
+    let targetObj: THREE.Object3D | null = null;
+
+    if (this.activeSelectedModelId) {
+      targetObj = this.modelRoot.children.find((c) => c.uuid === this.activeSelectedModelId) || null;
+    }
+    if (!targetObj) {
+      // Find first non-stroke child in modelRoot
+      targetObj = this.modelRoot.children.find((c) => c !== this.strokeRoot) || this.modelRoot;
+    }
+
+    const box = new THREE.Box3().setFromObject(targetObj);
+    if (box.isEmpty()) return;
+
+    const deltaY = groundY - box.min.y;
+    if (Math.abs(deltaY) > 0.0005) {
+      this.beginTransform(targetScope);
+      const matrix = new THREE.Matrix4().makeTranslation(0, deltaY, 0);
+      this.applyTransformMatrix(matrix, targetScope);
+      this.endTransform();
+      this.markDirty();
+    }
+  }
+
+  /**
+   * Deletes the currently selected stroke or 3D model/primitive
+   */
+  public deleteActiveSelection(): boolean {
+    if (this.selectedStrokeId) {
+      const entry = this.strokes.get(this.selectedStrokeId);
+      if (entry) {
+        this.historyUndoStack.push({
+          kind: 'stroke',
+          action: { type: 'erase', strokes: [entry.descriptor] },
+          timestamp: Date.now(),
+        });
+        this.historyRedoStack = [];
+        entry.meshes.forEach((m) => {
+          if (m.parent) m.parent.remove(m);
+          m.geometry.dispose();
+        });
+        this.strokes.delete(this.selectedStrokeId);
+        this.selectedStrokeId = null;
+        this.markDirty();
+        this.notifyHistory();
+        return true;
+      }
+    }
+
+    if (this.activeSelectedModelId) {
+      const model = this.modelRoot.children.find((c) => c.uuid === this.activeSelectedModelId);
+      if (model && model !== this.strokeRoot) {
+        this.historyUndoStack.push({
+          kind: 'primitive',
+          objectId: model.uuid,
+          object: model,
+          timestamp: Date.now(),
+        });
+        this.historyRedoStack = [];
+        this.modelRoot.remove(model);
+        this.targetMeshes = this.targetMeshes.filter((m) => m !== model && !model.children.includes(m));
+        this.activeSelectedModelId = null;
+        this.notifyModelsChanged();
+        this.markDirty();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Unified raycast selection: tests 3D stroke curves, and if none hit, raycasts 3D models/primitives
+   */
+  public raycastSelection(screenX: number, screenY: number): { type: 'stroke' | 'model' | 'none'; id?: string; name?: string } {
+    const strokeId = this.raycastStroke(screenX, screenY);
+    if (strokeId) {
+      this.selectStroke(strokeId);
+      return { type: 'stroke', id: strokeId };
+    }
+
+    // Raycast model/primitive
+    const hit = this.raycastModel(screenX, screenY);
+    if (hit && hit.mesh) {
+      let curr: THREE.Object3D | null = hit.mesh;
+      let topChild: THREE.Object3D | null = null;
+      while (curr && curr.parent) {
+        if (curr.parent === this.modelRoot) {
+          topChild = curr;
+          break;
+        }
+        curr = curr.parent;
+      }
+
+      if (topChild && topChild !== this.strokeRoot) {
+        this.activeSelectedModelId = topChild.uuid;
+        this.notifyModelsChanged();
+        this.markDirty();
+        return { type: 'model', id: topChild.uuid, name: topChild.name || '3D Object' };
+      }
+    }
+
+    this.selectStroke(null);
+    return { type: 'none' };
   }
 
   /**
@@ -1625,11 +1839,18 @@ export class StudioEngine {
     // Vacuum Eraser finalize
     if (tool === 'eraser' && settings.eraserMode === 'vacuum') {
       if (this.activeVacuumPurgedBatch.length > 0) {
-        this.undoStack.push({
-          type: 'erase',
+        const action = {
+          type: 'erase' as const,
           strokes: [...this.activeVacuumPurgedBatch],
+        };
+        this.undoStack.push(action);
+        this.historyUndoStack.push({
+          kind: 'stroke',
+          action,
+          timestamp: Date.now(),
         });
         this.redoStack = [];
+        this.historyRedoStack = [];
         this.activeVacuumPurgedBatch = [];
         this.notifyHistory();
       }
@@ -1638,6 +1859,11 @@ export class StudioEngine {
 
     if (tool === 'uv_brush') {
       this.uvEngine.endStroke();
+      this.historyUndoStack.push({
+        kind: 'uv',
+        timestamp: Date.now(),
+      });
+      this.historyRedoStack = [];
       this.notifyHistory();
       return;
     }
@@ -1655,14 +1881,42 @@ export class StudioEngine {
       }
     }
 
+    // Straight Line / Ruler Mode Constraint
+    if (settings.straightLineMode && this.activePoints.length >= 2) {
+      const pStart = this.activePoints[0];
+      const pEnd = this.activePoints[this.activePoints.length - 1];
+      const count = Math.max(12, this.activePoints.length);
+      const straightPoints: StrokePoint[] = [];
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1);
+        straightPoints.push({
+          position: new THREE.Vector3().lerpVectors(pStart.position, pEnd.position, t),
+          normal: new THREE.Vector3().lerpVectors(pStart.normal, pEnd.normal, t).normalize(),
+          surfaceOffset: pStart.surfaceOffset,
+          pressure: pStart.pressure * (1 - t) + pEnd.pressure * t,
+          isSurfaceHit: pStart.isSurfaceHit,
+          time: performance.now(),
+        });
+      }
+      this.activePoints = straightPoints;
+      this.updateActiveStrokeGeometry(settings, symmetry);
+    }
+
     this.commitActiveSegment(settings, tool);
 
     if (this.activeStrokeBatch.length > 0) {
-      this.undoStack.push({
-        type: 'create',
+      const action = {
+        type: 'create' as const,
         strokes: [...this.activeStrokeBatch],
+      };
+      this.undoStack.push(action);
+      this.historyUndoStack.push({
+        kind: 'stroke',
+        action,
+        timestamp: Date.now(),
       });
       this.redoStack = [];
+      this.historyRedoStack = [];
       this.activeStrokeBatch = [];
       this.notifyHistory();
     }
@@ -1987,116 +2241,142 @@ export class StudioEngine {
   }
 
   /**
-   * Undo last stroke, vacuum erase, or transform operation
+   * Undo last stroke, vacuum erase, primitive spawn, or transform operation in exact chronological order
    */
   public undo(): boolean {
-    if (this.transformUndoStack.length > 0) {
-      const transformEntry = this.transformUndoStack.pop()!;
-      this.applyTransformMatrix(transformEntry.inverseMatrix, transformEntry.scope);
-      const fwd = transformEntry.inverseMatrix.clone().invert();
-      this.transformRedoStack.push({
-        scope: transformEntry.scope,
-        forwardMatrix: fwd,
-        layerId: transformEntry.layerId,
-      });
-      this.notifyHistory();
-      return true;
-    }
-
-    if (this.undoStack.length === 0) {
+    if (this.historyUndoStack.length === 0) {
+      if (this.undoStack.length > 0) {
+        const lastAction = this.undoStack.pop()!;
+        this.redoStack.push(lastAction);
+        if (lastAction.type === 'create') {
+          for (const desc of lastAction.strokes) {
+            const entry = this.strokes.get(desc.id);
+            if (entry) {
+              entry.meshes.forEach((m) => {
+                if (m.parent) m.parent.remove(m);
+                m.geometry.dispose();
+              });
+              this.strokes.delete(desc.id);
+            }
+          }
+        }
+        this.notifyHistory();
+        return true;
+      }
       return this.uvEngine.undo();
     }
 
-    const lastAction = this.undoStack.pop()!;
-    this.redoStack.push(lastAction);
+    const entry = this.historyUndoStack.pop()!;
+    this.historyRedoStack.push(entry);
 
-    if (lastAction.type === 'create') {
-      // Undoing a create -> remove the meshes
-      for (const desc of lastAction.strokes) {
-        const entry = this.strokes.get(desc.id);
-        if (entry) {
-          entry.meshes.forEach((m) => {
-            this.strokeRoot.remove(m);
-            m.geometry.dispose();
-          });
-          this.strokes.delete(desc.id);
+    if (entry.kind === 'stroke') {
+      const action = entry.action;
+      if (action.type === 'create') {
+        // Undoing a create -> remove the meshes
+        for (const desc of action.strokes) {
+          const strokeEntry = this.strokes.get(desc.id);
+          if (strokeEntry) {
+            strokeEntry.meshes.forEach((m) => {
+              if (m.parent) m.parent.remove(m);
+              m.geometry.dispose();
+            });
+            this.strokes.delete(desc.id);
+          }
+        }
+      } else if (action.type === 'erase') {
+        // Undoing an erase -> restore the purged strokes
+        for (const strokeDesc of action.strokes) {
+          const meshes: THREE.Mesh[] = [];
+          const mat = this.materialCache.getStrokeMaterial(strokeDesc.settings, true, 1.0);
+          const geom = this.beadGenerator.generateGeometry(strokeDesc.points, strokeDesc.settings, this.targetMeshes);
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.renderOrder = 5;
+          const parent = strokeDesc.settings.drawingMode === 'spatial_3d' ? this.worldStrokeRoot : this.strokeRoot;
+          parent.add(mesh);
+          meshes.push(mesh);
+          this.strokes.set(strokeDesc.id, { descriptor: strokeDesc, meshes });
         }
       }
-    } else if (lastAction.type === 'erase') {
-      // Undoing an erase -> restore the purged strokes
-      for (const strokeDesc of lastAction.strokes) {
-        const meshes: THREE.Mesh[] = [];
-        const mat = this.materialCache.getStrokeMaterial(strokeDesc.settings, true, 1.0);
-        const geom = this.beadGenerator.generateGeometry(strokeDesc.points, strokeDesc.settings, this.targetMeshes);
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.renderOrder = 5;
-        this.strokeRoot.add(mesh);
-        meshes.push(mesh);
-        this.strokes.set(strokeDesc.id, { descriptor: strokeDesc, meshes });
+    } else if (entry.kind === 'transform') {
+      this.applyTransformMatrix(entry.inverseMatrix, entry.scope);
+    } else if (entry.kind === 'uv') {
+      this.uvEngine.undo();
+    } else if (entry.kind === 'primitive') {
+      const obj = this.modelRoot.getObjectByProperty('uuid', entry.objectId);
+      if (obj) {
+        this.modelRoot.remove(obj);
+        this.targetMeshes = this.targetMeshes.filter((m) => m !== obj && !obj.children.includes(m));
+        this.notifyModelsChanged();
       }
     }
 
+    this.markDirty();
     this.notifyHistory();
     return true;
   }
 
   /**
-   * Redo undone stroke, vacuum erase, or transform operation
+   * Redo undone stroke, vacuum erase, primitive spawn, or transform operation in exact chronological order
    */
   public redo(layers: Layer[]): boolean {
-    if (this.transformRedoStack.length > 0) {
-      const redoEntry = this.transformRedoStack.pop()!;
-      this.applyTransformMatrix(redoEntry.forwardMatrix, redoEntry.scope);
-      const inv = redoEntry.forwardMatrix.clone().invert();
-      this.transformUndoStack.push({
-        scope: redoEntry.scope,
-        inverseMatrix: inv,
-        layerId: redoEntry.layerId,
-      });
-      this.notifyHistory();
-      return true;
-    }
-
-    if (this.redoStack.length === 0) {
+    if (this.historyRedoStack.length === 0) {
+      if (this.redoStack.length > 0) {
+        const action = this.redoStack.pop()!;
+        this.undoStack.push(action);
+        this.notifyHistory();
+        return true;
+      }
       return this.uvEngine.redo();
     }
 
-    const action = this.redoStack.pop()!;
-    this.undoStack.push(action);
+    const entry = this.historyRedoStack.pop()!;
+    this.historyUndoStack.push(entry);
 
-    if (action.type === 'create') {
-      // Redoing a create -> reconstruct meshes
-      for (const strokeDesc of action.strokes) {
-        const layer = layers.find((l) => l.id === strokeDesc.layerId);
-        const layerOpacity = layer ? layer.opacity : 1.0;
-        const layerVisible = layer ? layer.visible : true;
+    if (entry.kind === 'stroke') {
+      const action = entry.action;
+      if (action.type === 'create') {
+        // Redoing a create -> reconstruct meshes
+        for (const strokeDesc of action.strokes) {
+          const layer = layers.find((l) => l.id === strokeDesc.layerId);
+          const layerOpacity = layer ? layer.opacity : 1.0;
+          const layerVisible = layer ? layer.visible : true;
 
-        const meshes: THREE.Mesh[] = [];
-        const layerBlendMode = layer ? layer.blendMode || 'normal' : 'normal';
-        const mat = this.materialCache.getStrokeMaterial(strokeDesc.settings, true, layerOpacity, layerBlendMode);
-        const geom = this.beadGenerator.generateGeometry(strokeDesc.points, strokeDesc.settings, this.targetMeshes);
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.visible = layerVisible;
-        mesh.renderOrder = 5;
-        this.strokeRoot.add(mesh);
-        meshes.push(mesh);
+          const meshes: THREE.Mesh[] = [];
+          const layerBlendMode = layer ? layer.blendMode || 'normal' : 'normal';
+          const mat = this.materialCache.getStrokeMaterial(strokeDesc.settings, true, layerOpacity, layerBlendMode);
+          const geom = this.beadGenerator.generateGeometry(strokeDesc.points, strokeDesc.settings, this.targetMeshes);
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.visible = layerVisible;
+          mesh.renderOrder = 5;
+          const parent = strokeDesc.settings.drawingMode === 'spatial_3d' ? this.worldStrokeRoot : this.strokeRoot;
+          parent.add(mesh);
+          meshes.push(mesh);
 
-        this.strokes.set(strokeDesc.id, { descriptor: strokeDesc, meshes });
-      }
-    } else if (action.type === 'erase') {
-      // Redoing an erase -> remove meshes again
-      for (const desc of action.strokes) {
-        const entry = this.strokes.get(desc.id);
-        if (entry) {
-          entry.meshes.forEach((m) => {
-            this.strokeRoot.remove(m);
-            m.geometry.dispose();
-          });
-          this.strokes.delete(desc.id);
+          this.strokes.set(strokeDesc.id, { descriptor: strokeDesc, meshes });
+        }
+      } else if (action.type === 'erase') {
+        // Redoing an erase -> remove meshes again
+        for (const desc of action.strokes) {
+          const strokeEntry = this.strokes.get(desc.id);
+          if (strokeEntry) {
+            strokeEntry.meshes.forEach((m) => {
+              if (m.parent) m.parent.remove(m);
+              m.geometry.dispose();
+            });
+            this.strokes.delete(desc.id);
+          }
         }
       }
+    } else if (entry.kind === 'transform') {
+      this.applyTransformMatrix(entry.forwardMatrix, entry.scope);
+    } else if (entry.kind === 'uv') {
+      this.uvEngine.redo();
+    } else if (entry.kind === 'primitive') {
+      this.modelRoot.add(entry.object);
+      this.notifyModelsChanged();
     }
 
+    this.markDirty();
     this.notifyHistory();
     return true;
   }
@@ -2215,29 +2495,35 @@ export class StudioEngine {
     });
     this.strokes.clear();
 
-    // 3. Purge all child meshes from strokeRoot completely
-    while (this.strokeRoot.children.length > 0) {
-      const child = this.strokeRoot.children[0];
-      this.strokeRoot.remove(child);
-      if ((child as any).geometry) {
-        try { (child as any).geometry.dispose(); } catch (_) {}
+    // 3. Purge all child meshes from strokeRoot and worldStrokeRoot completely
+    const purgeGroup = (grp: THREE.Group) => {
+      while (grp.children.length > 0) {
+        const child = grp.children[0];
+        grp.remove(child);
+        if ((child as any).geometry) {
+          try { (child as any).geometry.dispose(); } catch (_) {}
+        }
+        if ((child as any).material) {
+          try {
+            if (Array.isArray((child as any).material)) {
+              (child as any).material.forEach((mat: any) => mat.dispose());
+            } else {
+              (child as any).material.dispose();
+            }
+          } catch (_) {}
+        }
       }
-      if ((child as any).material) {
-        try {
-          if (Array.isArray((child as any).material)) {
-            (child as any).material.forEach((mat: any) => mat.dispose());
-          } else {
-            (child as any).material.dispose();
-          }
-        } catch (_) {}
-      }
-    }
+    };
+    purgeGroup(this.strokeRoot);
+    if (this.worldStrokeRoot) purgeGroup(this.worldStrokeRoot);
 
     // 4. Reset history stacks
     this.undoStack = [];
     this.redoStack = [];
     this.transformUndoStack = [];
     this.transformRedoStack = [];
+    this.historyUndoStack = [];
+    this.historyRedoStack = [];
 
     // 5. Clear dynamic UV canvas & history
     if (this.uvEngine) {
@@ -3117,15 +3403,27 @@ export class StudioEngine {
    */
   public endTransform(): void {
     if (!this.currentTransformTotalMatrix.equals(new THREE.Matrix4())) {
-      const inv = this.currentTransformTotalMatrix.clone().invert();
-      const fwd = this.currentTransformTotalMatrix.clone();
-      this.transformUndoStack.push({
-        scope: this.transformActiveScope,
-        inverseMatrix: inv,
-        layerId: this.activeLayerId,
-      });
-      this.transformRedoStack = [];
-      this.notifyHistory();
+      // Never pollute undo history with camera navigation / orbit / pan movements!
+      if (this.transformActiveScope !== 'camera') {
+        const inv = this.currentTransformTotalMatrix.clone().invert();
+        const fwd = this.currentTransformTotalMatrix.clone();
+        this.transformUndoStack.push({
+          scope: this.transformActiveScope,
+          inverseMatrix: inv,
+          layerId: this.activeLayerId,
+        });
+        this.historyUndoStack.push({
+          kind: 'transform',
+          scope: this.transformActiveScope,
+          inverseMatrix: inv,
+          forwardMatrix: fwd,
+          layerId: this.activeLayerId,
+          timestamp: Date.now(),
+        });
+        this.transformRedoStack = [];
+        this.historyRedoStack = [];
+        this.notifyHistory();
+      }
     }
   }
 
@@ -4288,8 +4586,8 @@ export class StudioEngine {
 
   private notifyHistory(): void {
     if (this.onHistoryChange) {
-      const canUndo = this.undoStack.length > 0 || this.transformUndoStack.length > 0;
-      const canRedo = this.redoStack.length > 0 || this.transformRedoStack.length > 0;
+      const canUndo = this.historyUndoStack.length > 0 || this.undoStack.length > 0 || this.transformUndoStack.length > 0;
+      const canRedo = this.historyRedoStack.length > 0 || this.redoStack.length > 0 || this.transformRedoStack.length > 0;
       this.onHistoryChange(canUndo, canRedo);
     }
     this.onAutoSaveTrigger?.('history');
