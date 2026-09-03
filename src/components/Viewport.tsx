@@ -1144,7 +1144,7 @@ export const Viewport: React.FC<ViewportProps> = ({
       {/* 3-Finger Gesture Floating Live Toast / HUD Indicator */}
       {gestureToast && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-          <div className="px-4 py-2 rounded-2xl bg-neutral-900/90 border border-neutral-700 text-white shadow-2xl backdrop-blur-md flex flex-col items-center justify-center text-center">
+          <div className="px-4 py-2 rounded-2xl bg-neutral-900/90 border border-neutral-700 text-white shadow-2xl flex flex-col items-center justify-center text-center">
             <span className="text-xs font-bold text-indigo-400 tracking-wide">
               {gestureToast.title}
             </span>
@@ -1172,7 +1172,7 @@ export const Viewport: React.FC<ViewportProps> = ({
         onPointerLeave={() => {
           showNavPod(1500);
         }}
-        className={`absolute bottom-6 right-6 z-20 flex flex-col items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 p-1.5 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-300 ease-out ${
+        className={`absolute bottom-6 right-6 z-20 flex flex-col items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 p-1.5 rounded-2xl shadow-xl transition-all duration-300 ease-out ${
           isNavPodVisible
             ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto shadow-[0_12px_32px_rgba(0,0,0,0.6)]'
             : 'opacity-0 translate-y-3 scale-95 pointer-events-none'

@@ -30,9 +30,9 @@ export const PlayTopStrip: React.FC<PlayTopStripProps> = ({
 }) => {
   const isLight = theme === 'light';
   const chip = isLight
-    ? 'bg-white/90 border-neutral-200 text-neutral-800'
-    : 'bg-[#14161c]/90 border-neutral-800 text-neutral-100';
-  const btn = `h-11 w-11 rounded-2xl flex items-center justify-center border backdrop-blur-md transition-all active:scale-95 ${chip}`;
+    ? 'bg-white border-neutral-200 text-neutral-800'
+    : 'bg-[#14161c] border-neutral-800 text-neutral-100';
+  const btn = `h-11 w-11 rounded-2xl flex items-center justify-center border transition-all active:scale-95 ${chip}`;
 
   return (
     <div
@@ -43,7 +43,7 @@ export const PlayTopStrip: React.FC<PlayTopStripProps> = ({
       <button
         type="button"
         onClick={onOpenToybox}
-        className={`pointer-events-auto h-11 max-w-[52%] px-4 rounded-2xl border backdrop-blur-md
+        className={`pointer-events-auto h-11 max-w-[52%] px-4 rounded-2xl border
           text-sm font-bold truncate transition-all active:scale-95 ${chip}`}
         title="Pick something to colour"
       >

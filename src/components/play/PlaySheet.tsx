@@ -65,9 +65,9 @@ export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme
       ref={sheetRef}
       role="dialog"
       aria-label={title}
-      className={`fixed left-0 right-0 bottom-0 z-50 rounded-t-3xl border-t shadow-2xl backdrop-blur-xl
+      className={`fixed left-0 right-0 bottom-0 z-50 rounded-t-3xl border-t shadow-2xl
         motion-safe:animate-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-150
-        ${isLight ? 'bg-white/95 border-neutral-200 text-neutral-800' : 'bg-[#14161c]/95 border-neutral-800 text-neutral-100'}`}
+        ${isLight ? 'bg-white border-neutral-200 text-neutral-800' : 'bg-[#14161c] border-neutral-800 text-neutral-100'}`}
       style={{
         maxHeight: '40vh',
         paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',

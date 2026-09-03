@@ -48,8 +48,8 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
   );
 
   const chip = isLight
-    ? 'bg-white/90 border-neutral-200 text-neutral-800'
-    : 'bg-[#14161c]/90 border-neutral-800 text-neutral-100';
+    ? 'bg-white border-neutral-200 text-neutral-800'
+    : 'bg-[#14161c] border-neutral-800 text-neutral-100';
 
   const pickColour = (hex: string, name: string) => {
     haptics.trigger('light');
@@ -83,7 +83,7 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
         <button
           type="button"
           onClick={() => toggleSheet('colour')}
-          className={`h-14 pl-2 pr-4 rounded-2xl border backdrop-blur-md flex items-center gap-2
+          className={`h-14 pl-2 pr-4 rounded-2xl border flex items-center gap-2
             transition-all active:scale-95 ${chip}`}
           title="Colour"
         >
@@ -98,7 +98,7 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
         <button
           type="button"
           onClick={() => toggleSheet('size')}
-          className={`h-14 px-4 rounded-2xl border backdrop-blur-md flex flex-col items-center justify-center
+          className={`h-14 px-4 rounded-2xl border flex flex-col items-center justify-center
             transition-all active:scale-95 ${chip}`}
           title="Brush size"
         >
@@ -116,7 +116,7 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
         <button
           type="button"
           onClick={() => toggleSheet('fx')}
-          className={`h-14 px-4 rounded-2xl border backdrop-blur-md flex flex-col items-center justify-center gap-0.5
+          className={`h-14 px-4 rounded-2xl border flex flex-col items-center justify-center gap-0.5
             transition-all active:scale-95 ${chip}`}
           title="Magic effects"
         >

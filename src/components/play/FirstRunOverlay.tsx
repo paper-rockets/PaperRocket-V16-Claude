@@ -45,7 +45,7 @@ export const FirstRunOverlay: React.FC<FirstRunOverlayProps> = ({ onOpenToybox, 
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
       <div
         className={`relative w-full max-w-md mx-4 rounded-3xl shadow-2xl flex flex-col overflow-hidden ${bgColor} motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:zoom-in-95`}
         style={{
@@ -78,7 +78,7 @@ export const FirstRunOverlay: React.FC<FirstRunOverlayProps> = ({ onOpenToybox, 
         <div
           className={`flex items-center justify-between gap-3 px-6 py-4 border-t ${
             isLight ? 'border-neutral-200 bg-white/50' : 'border-neutral-800 bg-[#0f1117]/50'
-          } backdrop-blur-sm`}
+          }`}
         >
           <button
             type="button"

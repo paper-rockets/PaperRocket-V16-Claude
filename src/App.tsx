@@ -930,6 +930,10 @@ export default function App() {
             onClose={() => setIsToyboxOpen(false)}
             onSpawned={(name) => setActiveModelName(name)}
             setBrushSettings={setBrushSettings}
+            onOpenImporter={() => {
+              setDroppedFilesForConverter(null);
+              setIsConverterOpen(true);
+            }}
             theme={theme}
           />
         </>

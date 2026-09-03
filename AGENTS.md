@@ -34,6 +34,9 @@ surface ("Play") and keep the entire existing surface behind a flag ("Pro").**
 5. **One phase per branch, one phase per agent.** Do not bundle phases. Do not "while I'm here".
 6. **Touch targets ≥ 44 px** at `uiScale = 1.0`. This is a tablet held in two hands.
 7. **No new dependencies** without asking. The bundle already ships to a low-power tablet.
+   Related: **never add `backdrop-blur` to anything that sits over the 3D canvas.** It makes the
+   compositor re-read and blur that region every frame; two nested `backdrop-blur-2xl` layers on
+   the navigator measured a drop to 30fps on a Galaxy S25 Ultra. Use an opaque panel.
 8. **Naming: this product is PaperRockets.** The word "Feather" (from Feather3D, the iPad app that
    inspired the tactile wheel) has been purged from the source and must not come back — not in
    component names, DOM ids, comments, or UI strings. Use `PaperRocket` / `paperrocket-`.
@@ -50,7 +53,7 @@ surface ("Play") and keep the entire existing surface behind a flag ("Pro").**
 | Engine facade — everything the UI calls | `src/core/studioEngine.ts` |
 | Shared types (`ToolType`, `BrushSettings`, `EraserMode`, `StrokeProfile`) | `src/types.ts` |
 | Brush / paint presets | `src/presets/` |
-| Model catalog (49 entries) | `src/core/sampleModels.ts`, files in `public/models/` |
+| Model catalog — now empty by design; people import their own | `src/core/sampleModels.ts`, `src/core/modelStorage.ts` |
 | Pub/sub store pattern to copy | `src/core/telemetryStore.ts` |
 | Unreferenced legacy components (do not import) | `src/components/_attic/` |
 

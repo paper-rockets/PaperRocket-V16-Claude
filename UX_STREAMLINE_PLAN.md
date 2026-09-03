@@ -42,7 +42,7 @@ Counted from the JSX, not from the spec doc:
 | Animated shader effects | `src/core/animatedShaders.ts` | **27** effects in one union type |
 | Brush presets | `src/presets/brushPresets.ts` | **20** presets |
 | Paint / material presets | `src/presets/paintPresets.ts` | 15 presets |
-| Model catalog | `src/core/sampleModels.ts` + `public/models/` | 49 entries / 37 shipped `.glb` files, 6 categories |
+| Model catalog | `src/core/sampleModels.ts` + `public/models/` | **removed** — was 47 presets / 37 `.glb` (99 MB); people import their own now |
 | Modals and panels mounted in App | `src/App.tsx` | **21** lazy-loaded panels |
 | Top-level React state in App | `src/App.tsx` | **69** `useState` hooks |
 

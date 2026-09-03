@@ -120,14 +120,13 @@ export const PlayDock: React.FC<PlayDockProps> = ({ tool, shapeSnapping, onSelec
             onPointerLeave={clearTimer}
             onPointerCancel={clearTimer}
             onContextMenu={(e) => e.preventDefault()}
-            className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center gap-0.5 border
-              backdrop-blur-md transition-all active:scale-95 touch-none
+            className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center gap-0.5 border transition-all active:scale-95 touch-none
               ${
                 isActive
                   ? 'bg-sky-400 border-sky-300 text-zinc-950 shadow-lg shadow-sky-500/25'
                   : isLight
-                    ? 'bg-white/90 border-neutral-200 text-neutral-600'
-                    : 'bg-[#14161c]/90 border-neutral-800 text-neutral-300'
+                    ? 'bg-white border-neutral-200 text-neutral-600'
+                    : 'bg-[#14161c] border-neutral-800 text-neutral-300'
               }`}
           >
             <Icon className="w-5 h-5" />

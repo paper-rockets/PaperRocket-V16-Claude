@@ -67,6 +67,21 @@ export interface PaperRocketTactileWheelProps {
   clipboardCount?: number;
 }
 
+/**
+ * Performance note — no backdrop-filter in here.
+ *
+ * This widget used to carry two NESTED backdrop-blur-2xl layers: the root card
+ * (228x283) and the circular wheel inside it (176x176). backdrop-filter over a
+ * live WebGL canvas makes the compositor re-read and blur that region every
+ * frame, nesting does it twice, and 2xl is the widest radius. Because the wheel
+ * is on screen the whole time in Play, that was a permanent tax — measured as a
+ * drop to 30fps on a Galaxy S25 Ultra, worsening as menus stacked more blur on
+ * top.
+ *
+ * The panel is bg-[#18181b]/95. At 95% opacity there is nothing meaningful to
+ * see through it, so the blur was paying full price for an invisible effect.
+ * Keep it opaque; do not reintroduce backdrop-blur here.
+ */
 export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
   engine,
   brushSettings,
@@ -221,6 +236,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       target.closest('#paperrocket-trackball-sphere') ||
       target.closest('#paperrocket-joystick-core') ||
       target.closest('#paperrocket-radial-dial') ||
+      // The rotation ring is a drag surface of its own. Without this the same
+      // gesture both turned the canvas and hauled the whole panel into a corner.
+      target.closest('#paperrocket-rotation-ring') ||
       target.closest('#transform-navigator-header')
     ) {
       return;
@@ -1009,7 +1027,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           playHapticSound('pop', soundEnabled);
           setIsOpen(true);
         }}
-        className="fixed z-40 px-3.5 py-2 rounded-2xl bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.6)] flex items-center gap-2 text-white cursor-pointer group select-none"
+        className="fixed z-40 px-3.5 py-2 rounded-2xl bg-[#14151a]/95 border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.6)] flex items-center gap-2 text-white cursor-pointer group select-none"
         title="Restore Tactile Wheel"
       >
         <Disc className="w-4 h-4 text-sky-400" />
@@ -1035,7 +1053,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         transform: `scale(${(uiScale || 1.0) * scaleFactor})`,
         transformOrigin: 'top left',
       }}
-      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
+      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] bg-[#14151a]/95 border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -1089,7 +1107,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           onPointerCancel={() => {
             cancelLongPressDetection();
           }}
-          className={`relative ${wheelSizeClass} rounded-full bg-[#18181b]/95 backdrop-blur-2xl border border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
+          className={`relative ${wheelSizeClass} rounded-full bg-[#18181b]/95 border border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
         >
         {/* Inner Surface with Velocity-Based CSS Vibration (Preventing outer button displacement glitches) */}
         <div
@@ -1401,7 +1419,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             setShowMenu((prev) => !prev);
             setShowHiddenPhysicsPanel(false);
           }}
-          className={`absolute bottom-2.5 left-2.5 z-30 w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md ${
+          className={`absolute bottom-2.5 left-2.5 z-30 w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             showMenu
               ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-sm'
               : 'bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white border border-white/[0.06] shadow-sm'
@@ -1424,7 +1442,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             setShowMenu(false);
             setShowHiddenPhysicsPanel(false);
           }}
-          className="absolute bottom-2.5 right-2.5 z-30 w-7 h-7 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/[0.06] shadow-sm backdrop-blur-md"
+          className="absolute bottom-2.5 right-2.5 z-30 w-7 h-7 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/[0.06] shadow-sm"
           title="Minimize to Dot"
           aria-label="Minimize wheel"
         >
@@ -1441,7 +1459,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             initial={{ opacity: 0, scale: 0.92, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
-            className="absolute bottom-11 inset-x-2 z-50 p-3.5 rounded-2xl bg-[#1c1c1f]/98 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] text-neutral-200 flex flex-col gap-2.5 backdrop-blur-2xl max-h-[calc(100%-60px)] overflow-y-auto"
+            className="absolute bottom-11 inset-x-2 z-50 p-3.5 rounded-2xl bg-[#1c1c1f]/98 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] text-neutral-200 flex flex-col gap-2.5 max-h-[calc(100%-60px)] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
               <span className="text-xs font-bold text-white">Wheel Options</span>
@@ -1594,7 +1612,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            className="absolute inset-0 z-50 rounded-[24px] bg-[#14151a]/98 backdrop-blur-2xl border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.95)] text-neutral-200 flex flex-col p-4 overflow-y-auto select-none gap-3"
+            className="absolute inset-0 z-50 rounded-[24px] bg-[#14151a]/98 border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.95)] text-neutral-200 flex flex-col p-4 overflow-y-auto select-none gap-3"
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-neutral-800 pb-2.5 shrink-0">
