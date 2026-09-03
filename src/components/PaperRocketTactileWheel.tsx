@@ -8,6 +8,8 @@ import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react
 import {
   MoreHorizontal,
   RotateCcw,
+  Camera,
+  Move3d,
   Volume2,
   VolumeX,
   Maximize2,
@@ -817,6 +819,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   const [ringInDetent, setRingInDetent] = useState<boolean>(false);
   /** Total turn applied so far, so the marker still means something after you let go. */
   const [ringTotalAngle, setRingTotalAngle] = useState<number>(0);
+  /**
+   * What the ring turns: the thing on the canvas, or the camera around it.
+   *
+   * Turning the object and walking around it look similar for a second and then
+   * diverge completely — one changes the drawing, the other only changes where
+   * you stand. Both are wanted, so the ring does one at a time and the camera
+   * icon says which.
+   */
+  const [ringTurnsCamera, setRingTurnsCamera] = useState<boolean>(false);
 
   /** Reset also puts the turn indicator back to straight. */
   const handleRingAwareReset = useCallback(() => {
@@ -843,7 +854,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     ringAppliedAngle.current = 0;
     ringDetentRef.current = 0;
     setIsRingTurning(true);
-    engine?.beginTransform(targetScope);
+    if (!ringTurnsCamera) engine?.beginTransform(targetScope);
     try {
       ringRef.current?.setPointerCapture(e.pointerId);
     } catch {}
@@ -886,6 +897,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
     const rad = (delta * Math.PI) / 180;
     if (engine) {
+      if (ringTurnsCamera) {
+        // Orbit around what you are looking at. Nothing on the canvas moves.
+        engine.orbitCamera(-rad, 0);
+      } else {
       // Always spin in the plane of the screen, in BOTH modes.
       //
       // The ring used to turn around the world up-axis in 3D World. On a flat
@@ -898,6 +913,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       // axis is a different idea and already has its own control — the red, green
       // and blue nodes.
       engine.rotateScreenSpace(rad, targetScope, isLocked);
+      }
     }
     onUpdateSpatial((prev) => ({ ...prev, roll: (prev.roll + delta) % 360 }));
   };
@@ -912,7 +928,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     try {
       ringRef.current?.releasePointerCapture(e.pointerId);
     } catch {}
-    engine?.endTransform();
+    if (!ringTurnsCamera) engine?.endTransform();
   };
 
   const handleDialPointerDown = (e: React.PointerEvent) => {
@@ -1561,6 +1577,29 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
         {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
         <button
+          id="paperrocket-ring-target-btn"
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            haptics.trigger('mode-switch');
+            setRingTurnsCamera((v) => !v);
+          }}
+          className={`absolute bottom-2.5 left-2.5 z-30 w-9 h-9 rounded-xl flex items-center justify-center
+            border transition-all active:scale-95 ${
+              ringTurnsCamera
+                ? 'bg-sky-400 border-sky-300 text-zinc-950'
+                : isLightTheme
+                  ? 'bg-neutral-200 border-neutral-300 text-neutral-600'
+                  : 'bg-white/[0.08] border-white/[0.06] text-neutral-400'
+            }`}
+          title={ringTurnsCamera ? 'Ring moves the camera' : 'Ring turns your drawing'}
+          aria-pressed={ringTurnsCamera}
+        >
+          {ringTurnsCamera ? <Camera className="w-4 h-4" /> : <Move3d className="w-4 h-4" />}
+        </button>
+
+        <button
           id="paperrocket-minimize-btn"
           type="button"
           onClick={(e) => {
@@ -1570,7 +1609,11 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             setShowMenu(false);
             setShowHiddenPhysicsPanel(false);
           }}
-          className="absolute bottom-2.5 right-2.5 z-30 w-7 h-7 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/[0.06] shadow-sm"
+          className={`absolute bottom-2.5 right-2.5 z-30 w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border shadow-sm ${
+            isLightTheme
+              ? 'bg-neutral-200 border-neutral-300 text-neutral-600 hover:bg-neutral-300'
+              : 'bg-white/[0.08] border-white/[0.06] text-neutral-400 hover:bg-white/[0.16] hover:text-white'
+          }`}
           title="Minimize to Dot"
           aria-label="Minimize wheel"
         >

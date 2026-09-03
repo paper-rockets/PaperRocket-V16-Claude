@@ -43,6 +43,7 @@ import { FirstRunOverlay } from './components/play/FirstRunOverlay';
 import { Toybox } from './components/play/Toybox';
 import { PlayStats } from './components/play/PlayStats';
 import { PlaySettingsSheet } from './components/play/PlaySettingsSheet';
+import { PlayImporter } from './components/play/PlayImporter';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -189,6 +190,7 @@ export default function App() {
   const [isToyboxOpen, setIsToyboxOpen] = useState<boolean>(false);
   const [showPlayStats, setShowPlayStats] = useState<boolean>(true);
   const [showPlayNavigator, setShowPlayNavigator] = useState<boolean>(true);
+  const [isPlayImporterOpen, setIsPlayImporterOpen] = useState<boolean>(false);
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -928,6 +930,17 @@ export default function App() {
             }
           />
           {showPlayStats && <PlayStats theme={theme} />}
+          <PlayImporter
+            isOpen={isPlayImporterOpen}
+            engine={engine}
+            onClose={() => setIsPlayImporterOpen(false)}
+            onSaved={(n) => setActiveModelName(n)}
+            onOpenFineTuning={() => {
+              setDroppedFilesForConverter(null);
+              setIsConverterOpen(true);
+            }}
+            theme={theme}
+          />
           <PlaySettingsSheet
             theme={theme}
             onSetTheme={handleSetTheme}
@@ -945,10 +958,7 @@ export default function App() {
             onClose={() => setIsToyboxOpen(false)}
             onSpawned={(name) => setActiveModelName(name)}
             setBrushSettings={setBrushSettings}
-            onOpenImporter={() => {
-              setDroppedFilesForConverter(null);
-              setIsConverterOpen(true);
-            }}
+            onOpenImporter={() => setIsPlayImporterOpen(true)}
             theme={theme}
           />
         </>
