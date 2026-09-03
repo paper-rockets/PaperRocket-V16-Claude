@@ -5,6 +5,8 @@ import { PLAY_PALETTE, findSwatch } from '../../presets/playPalette';
 import { toggleSheet, closeSheet } from './sheetStore';
 import { PlaySheet } from './PlaySheet';
 import { haptics } from '../../utils/haptics';
+import { StudioEngine } from '../../core/studioEngine';
+import { strokeDiameterPx } from './brushScale';
 
 /**
  * Zone D — the bottom strip: colour, size, effect.
@@ -14,6 +16,7 @@ import { haptics } from '../../utils/haptics';
  */
 
 interface PlayContextStripProps {
+  engine?: StudioEngine | null;
   brushSettings: BrushSettings;
   setBrushSettings: React.Dispatch<React.SetStateAction<BrushSettings>>;
   fxSheet?: React.ReactNode;
@@ -30,6 +33,7 @@ const SIZES: { label: string; value: number }[] = [
 ];
 
 export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
+  engine = null,
   brushSettings,
   setBrushSettings,
   fxSheet,
@@ -51,6 +55,17 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
     haptics.trigger('light');
     setBrushSettings((prev) => ({ ...prev, color: hex }));
     void name;
+  };
+
+  /** True on-screen width of a given brush size, for the previews. */
+  const previewPx = (worldSize: number, cap: number) => {
+    const px = strokeDiameterPx(
+      engine,
+      worldSize,
+      brushSettings.brushWidthMultiplier,
+      typeof window !== 'undefined' ? window.innerHeight : 800
+    );
+    return Math.max(4, Math.min(cap, px));
   };
 
   const pickSize = (value: number) => {
@@ -90,8 +105,8 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
           <span
             className="rounded-full bg-current"
             style={{
-              width: Math.max(6, activeSize.value * 110),
-              height: Math.max(6, activeSize.value * 110),
+              width: previewPx(activeSize.value, 26),
+              height: previewPx(activeSize.value, 26),
             }}
           />
           <span className="text-[9px] font-bold mt-0.5">{activeSize.label}</span>
@@ -154,7 +169,7 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
               >
                 <span
                   className="rounded-full bg-current"
-                  style={{ width: s.value * 200, height: s.value * 200 }}
+                  style={{ width: previewPx(s.value, 56), height: previewPx(s.value, 56) }}
                 />
                 <span className="text-xs font-bold">{s.label}</span>
               </button>

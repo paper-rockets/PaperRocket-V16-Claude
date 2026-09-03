@@ -904,6 +904,7 @@ export default function App() {
             theme={theme}
           />
           <PlayContextStrip
+            engine={engine}
             brushSettings={brushSettings}
             setBrushSettings={setBrushSettings}
             theme={theme}
