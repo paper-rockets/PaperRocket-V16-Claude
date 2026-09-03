@@ -751,6 +751,80 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   };
 
   // Radial dial handlers with normalized angular coordinate math
+  /**
+   * Rotation ring (Play).
+   *
+   * Simplifying the wheel to a single joystick removed the only way to turn
+   * anything: the trackball and numeric-dial sub-modes went to Pro, and with them
+   * rotation. Rather than bring a mode switch back, the widget now carries two
+   * gestures at once, which is what the black wheel and its white knob already
+   * look like: drag the WHITE PUCK to move, drag the BLACK RING around it to turn.
+   * No mode, no menu — the shape tells you.
+   */
+  const ringRef = useRef<HTMLDivElement | null>(null);
+  const ringLastAngle = useRef<number | null>(null);
+  const [isRingTurning, setIsRingTurning] = useState<boolean>(false);
+
+  const ringAngleAt = (e: React.PointerEvent): number | null => {
+    const el = ringRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    return (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+  };
+
+  const handleRingDown = (e: React.PointerEvent) => {
+    const a = ringAngleAt(e);
+    if (a === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    ringLastAngle.current = a;
+    setIsRingTurning(true);
+    engine?.beginTransform(targetScope);
+    try {
+      ringRef.current?.setPointerCapture(e.pointerId);
+    } catch {}
+    playHapticSound('tick', soundEnabled);
+  };
+
+  const handleRingMove = (e: React.PointerEvent) => {
+    if (!isRingTurning || ringLastAngle.current === null) return;
+    const a = ringAngleAt(e);
+    if (a === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Shortest way round, so crossing the +/-180 seam does not spin the model.
+    let delta = a - ringLastAngle.current;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    ringLastAngle.current = a;
+
+    const rad = (delta * Math.PI) / 180;
+    if (engine) {
+      if (mode === '3d') {
+        // In 3D World the ring turns around the up axis — the one a turntable turns on.
+        engine.rotateWorldAxis('y', rad, targetScope, isLocked);
+      } else {
+        engine.rotateScreenSpace(rad, targetScope, isLocked);
+      }
+    }
+    onUpdateSpatial((prev) => ({ ...prev, roll: (prev.roll + delta) % 360 }));
+  };
+
+  const handleRingUp = (e: React.PointerEvent) => {
+    if (!isRingTurning) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsRingTurning(false);
+    ringLastAngle.current = null;
+    try {
+      ringRef.current?.releasePointerCapture(e.pointerId);
+    } catch {}
+    engine?.endTransform();
+  };
+
   const handleDialPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1108,6 +1182,27 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         {/* ---------------------------------------------------- */}
         {/* CENTER INTERACTIVE CORE: 3 CHILD-SIMPLE TOY MODES     */}
         {/* ---------------------------------------------------- */}
+
+        {/* Rotation ring: sits under the joystick core so the puck wins the centre. */}
+        {isPlayMode && subMode === 'joystick' && (
+          <div
+            ref={ringRef}
+            id="paperrocket-rotation-ring"
+            onPointerDown={handleRingDown}
+            onPointerMove={handleRingMove}
+            onPointerUp={handleRingUp}
+            onPointerCancel={handleRingUp}
+            className="absolute inset-0 rounded-full z-10 touch-none cursor-grab active:cursor-grabbing"
+            title="Drag the ring to turn"
+          >
+            {/* Grip notches, so it reads as a thing you can twist. */}
+            <div
+              className={`absolute inset-[6px] rounded-full border-2 border-dashed transition-colors duration-150 ${
+                isRingTurning ? 'border-sky-400/70' : 'border-white/12'
+              }`}
+            />
+          </div>
+        )}
 
         {/* MODE 1: ELASTIC JOYSTICK & 3-AXIS PETALS */}
         {subMode === 'joystick' && (
