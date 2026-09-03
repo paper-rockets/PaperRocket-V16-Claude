@@ -1,0 +1,12 @@
+[package]
+name = "remix-gui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+remix-core = { path = "../remix-core" }
+remix-render = { path = "../remix-render" }
+egui = "0.31"
+glam = { version = "0.29" }

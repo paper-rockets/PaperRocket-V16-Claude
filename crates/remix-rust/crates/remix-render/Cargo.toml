@@ -1,0 +1,13 @@
+[package]
+name = "remix-render"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+remix-core = { path = "../remix-core" }
+wgpu = "24"
+bytemuck = { version = "1.21", features = ["derive"] }
+glam = { version = "0.29" }
+pollster = "0.4"

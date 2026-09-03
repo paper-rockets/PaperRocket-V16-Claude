@@ -19,6 +19,38 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      // esbuild minification keeps builds fast; the parse win on mobile comes from
+      // splitting, not from squeezing the last few percent out of the bytes.
+      target: 'es2020',
+      cssCodeSplit: true,
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          /**
+           * Vendor splitting.
+           *
+           * Three.js is by far the largest dependency and it changes only when the
+           * package is upgraded. Keeping it in its own chunk means an app-code
+           * deploy no longer invalidates it in the browser cache - which matters
+           * most on a tablet over mobile data, where re-downloading and re-parsing
+           * ~1 MB of engine code is the slowest part of a cold start.
+           */
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('three-mesh-bvh')) return 'vendor-bvh';
+            if (id.includes('/three/')) return 'vendor-three';
+            if (id.includes('/react-dom/') || id.includes('/react/') || id.includes('/scheduler/')) {
+              return 'vendor-react';
+            }
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            if (id.includes('jszip')) return 'vendor-zip';
+            if (id.includes('/motion/') || id.includes('framer-motion')) return 'vendor-motion';
+            return undefined;
+          },
+        },
+      },
+    },
     clearScreen: false,
     server: {
       host: process.env.TAURI_DEV_HOST || '0.0.0.0',

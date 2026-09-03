@@ -1,5 +1,5 @@
 // src/components/Toolbar.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy } from 'react';
 import * as THREE from 'three';
 import {
   ToolType,
@@ -12,9 +12,16 @@ import {
 import { normalizeHexColor } from '../core/materialCache';
 import { StudioEngine } from '../core/studioEngine';
 import { SampleModelFactory } from '../core/sampleModels';
-import { ColorStudioModal } from './ColorStudioModal';
+import { DeferredPanel } from './DeferredPanel';
 import { BrushPickerModal } from './BrushPickerModal';
 import { PaintPickerModal } from './PaintPickerModal';
+
+// Deferred: the Color Studio carries its own Three.js preview scene and the OKLCh
+// colour pipeline. A static import here also pinned it into the main bundle even
+// though App.tsx imports it lazily.
+const ColorStudioModal = lazy(() =>
+  import('./ColorStudioModal').then((m) => ({ default: m.ColorStudioModal }))
+);
 import {
   MousePointer2,
   CircleDashed,
@@ -2046,20 +2053,22 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
       {/* ---------------------------------------------------- */}
       {/* ADVANCED COLOR STUDIO MODAL (HSV & OKLCh POLAR)      */}
       {/* ---------------------------------------------------- */}
-      <ColorStudioModal
-        isOpen={showColorModal}
-        onClose={() => setShowColorModal(false)}
-        currentColor={brushSettings.color || '#38bdf8'}
-        onChangeColor={(hex) => handleSelectColor(hex)}
-        onApplyBrushSettings={(newSettings) =>
-          setBrushSettings((prev) => ({ ...prev, ...newSettings }))
-        }
-        onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
-        onSampleFromScreen={() => {
-          setTool('paint_picker');
-        }}
-        theme={theme}
-      />
+      <DeferredPanel active={showColorModal}>
+        <ColorStudioModal
+          isOpen={showColorModal}
+          onClose={() => setShowColorModal(false)}
+          currentColor={brushSettings.color || '#38bdf8'}
+          onChangeColor={(hex) => handleSelectColor(hex)}
+          onApplyBrushSettings={(newSettings) =>
+            setBrushSettings((prev) => ({ ...prev, ...newSettings }))
+          }
+          onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
+          onSampleFromScreen={() => {
+            setTool('paint_picker');
+          }}
+          theme={theme}
+        />
+      </DeferredPanel>
     </div>
   );
 };

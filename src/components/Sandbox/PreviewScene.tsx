@@ -6,6 +6,7 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { SandboxNavState, SandboxTheme } from './types';
+import { getQualityProfile, resolvePixelRatio } from '../../utils/deviceProfile';
 
 interface PreviewSceneProps {
   navState: SandboxNavState;
@@ -42,11 +43,16 @@ export const PreviewScene: React.FC<PreviewSceneProps> = ({
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const profile = getQualityProfile();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: profile.antialias,
+      alpha: true,
+      precision: profile.precision,
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(resolvePixelRatio(profile));
+    renderer.shadowMap.enabled = profile.shadows;
+    renderer.shadowMap.type = profile.shadowMapType;
     rendererRef.current = renderer;
 
     container.appendChild(renderer.domElement);

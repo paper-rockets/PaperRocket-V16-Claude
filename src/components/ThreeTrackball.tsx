@@ -6,6 +6,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { playHapticSound } from '../utils/audio';
+import { getQualityProfile, resolvePixelRatio } from '../utils/deviceProfile';
 
 interface ThreeTrackballProps {
   yaw: number;
@@ -147,7 +148,7 @@ export const ThreeTrackball: React.FC<ThreeTrackballProps> = ({
       precision: 'mediump',
     });
     renderer.setSize(size, size);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setPixelRatio(Math.min(resolvePixelRatio(), 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     container.innerHTML = '';

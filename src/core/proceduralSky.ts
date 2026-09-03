@@ -445,13 +445,21 @@ export class ProceduralSkyEngine {
   public applyPreset(presetOrId: string | EnvironmentPreset): void {
     let preset: EnvironmentPreset;
 
+    // The "off" state has to be honoured for both call shapes. setLights() re-applies
+    // the current preset as an object, so a string-only check let the dome switch
+    // itself back on whenever the lighting rig was rebuilt.
+    const requestedId = (typeof presetOrId === 'string' ? presetOrId : presetOrId?.id || '').toLowerCase();
+    if (requestedId === 'off') {
+      if (this.skyMesh) this.skyMesh.visible = false;
+      this.scene.background = new THREE.Color(0xf6f7f9);
+      // Record the off state so getCurrentPreset() reflects reality; callers
+      // (theme switching, background selection) test against it.
+      this.currentPreset = { ...this.currentPreset, id: 'off' };
+      return;
+    }
+
     if (typeof presetOrId === 'string') {
-      const id = presetOrId.toLowerCase();
-      if (id === 'off') {
-        if (this.skyMesh) this.skyMesh.visible = false;
-        this.scene.background = new THREE.Color(0xf6f7f9);
-        return;
-      }
+      const id = requestedId;
       const found = DEFAULT_PRESETS.find(
         (p) =>
           p.id.toLowerCase() === id ||

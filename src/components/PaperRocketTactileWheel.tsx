@@ -34,6 +34,7 @@ import { playHapticSound } from '../utils/audio';
 import { haptics } from '../utils/haptics';
 import { ThreeTrackball } from './ThreeTrackball';
 import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
+import { OuterDegreeIndicatorRing } from './TransformNavigator/OuterDegreeIndicatorRing';
 
 export interface PaperRocketTactileWheelProps {
   engine?: StudioEngine | null;
@@ -68,6 +69,7 @@ export interface PaperRocketTactileWheelProps {
   clipboardCount?: number;
   sensitivity?: number;
   onSensitivityChange?: (s: number) => void;
+  theme?: 'light' | 'dark';
 }
 
 export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
@@ -102,7 +104,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   clipboardCount = 0,
   sensitivity = 0.5,
   onSensitivityChange,
+  theme = 'dark',
 }) => {
+  const isLight = theme === 'light';
   // Mode state with internal fallback
   const [internalMode, setInternalMode] = useState<SpatialMode>('3d');
   const mode = controlledMode !== undefined ? controlledMode : internalMode;
@@ -1040,15 +1044,19 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           playHapticSound('pop', soundEnabled);
           setIsOpen(true);
         }}
-        className="fixed z-40 px-3.5 py-2 rounded-2xl bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.6)] flex items-center gap-2 text-white cursor-pointer group select-none"
+        className={`fixed z-40 px-3.5 py-2 rounded-2xl ${
+          isLight
+            ? 'bg-white/95 border-neutral-200 text-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.12)]'
+            : 'bg-[#14151a]/95 border-white/[0.12] text-white shadow-[0_12px_32px_rgba(0,0,0,0.6)]'
+        } backdrop-blur-2xl border flex items-center gap-2 cursor-pointer group select-none`}
         title="Restore Tactile Wheel"
       >
-        <Disc className="w-4 h-4 text-sky-400" />
-        <span className="text-xs font-semibold text-neutral-200">Tactile Wheel</span>
+        <Disc className="w-4 h-4 text-sky-500" />
+        <span className={`text-xs font-semibold ${isLight ? 'text-neutral-800' : 'text-neutral-200'}`}>Tactile Wheel</span>
         <div className="flex items-center gap-0.5 ml-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
         </div>
       </motion.button>
     );
@@ -1065,7 +1073,11 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         transform: `scale(${(uiScale || 1.0) * scaleFactor})`,
         transformOrigin: 'top left',
       }}
-      className={`fixed z-40 rounded-[26px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-visible flex flex-row items-center touch-none select-none ${className}`}
+      className={`fixed z-40 rounded-[26px] ${
+        isLight
+          ? 'bg-white/95 border-neutral-200/90 text-neutral-800 shadow-[0_20px_45px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)]'
+          : 'bg-[#14151a]/95 border-white/[0.08] text-white shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)]'
+      } backdrop-blur-2xl border overflow-visible flex flex-row items-center touch-none select-none ${className}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -1100,9 +1112,13 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           onPointerCancel={() => {
             cancelLongPressDetection();
           }}
-          className={`relative ${wheelSizeClass} rounded-full bg-[#18181b]/95 backdrop-blur-2xl border border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
+          className={`relative ${wheelSizeClass} rounded-full ${
+            isLight
+              ? 'bg-[#f4f4f7] border-neutral-300 shadow-[0_25px_60px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.8)]'
+              : 'bg-[#18181b]/95 border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)]'
+          } backdrop-blur-2xl border flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
         >
-        {/* Inner Surface with Velocity-Based CSS Vibration (Preventing outer button displacement glitches) */}
+        {/* Inner Surface with Velocity-Based CSS Vibration */}
         <div
           id="paper-rocket-wheel-surface"
           style={{
@@ -1119,6 +1135,13 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         {/* 1. JOYSTICK MODE (Move: Pan & 3D Axes) with Concentric Rotation Ring */}
         {mode !== 'tactile_ball' && (
           <>
+            {/* Fixed Outer Ring Degree Indicators (0, 45, 90, 135, 180, 225, 270, 315 degrees) */}
+            <OuterDegreeIndicatorRing
+              theme={theme}
+              size={isBiggerUI ? 214 : 196}
+              highlightAngle={snappedMilestone}
+            />
+
             {/* Interactive Outer Rotation Ring */}
             <div
               id="paper-rocket-rotation-ring"
@@ -1330,6 +1353,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           { id: '3d', label: 'Move' },
           { id: 'tactile_ball', label: 'Rotate' },
         ]}
+        theme={theme}
         isLocked={isLocked}
         onLockToggle={handleLockToggle}
         onReset={() => {

@@ -8,6 +8,7 @@ import { SHADER_PRESETS } from '../presets/shaderPresets';
 import { StudioEngine } from '../core/studioEngine';
 
 import { BrushSettings } from '../types';
+import { getQualityProfile, resolvePixelRatio } from '../utils/deviceProfile';
 
 interface MatCapShaderStudioModalProps {
   isOpen: boolean;
@@ -19,10 +20,16 @@ interface MatCapShaderStudioModalProps {
 }
 
 export const MOBILE_CATEGORIES = [
+  '🎨 Blobmixer',
+  '☀️ Summer Afternoon',
   'Toon & Anime',
-  'Fun & Magic',
-  'Wonderlust',
-  'Bright & Glass'
+  '🌿 Godot & Biomes',
+  '🌍 Wonderlust',
+  '🍃 Wayfinder & Grassworks',
+  '⚡ WebGPU & Cyber',
+  '✨ Fun & Magic',
+  'Metals & Glass',
+  'All Materials'
 ];
 
 export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = ({
@@ -42,9 +49,11 @@ export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = (
   const mousePosRef = useRef(new THREE.Vector2(0, 0));
   const objCacheRef = useRef<Record<string, THREE.BufferGeometry>>({});
 
-  const [activeCategory, setActiveCategory] = useState<string>('Toon & Anime');
+  const [activeCategory, setActiveCategory] = useState<string>('🎨 Blobmixer');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedShape, setSelectedShape] = useState<string>('suzanne');
   const [materialMode, setMaterialMode] = useState<'matcap' | 'shader'>('matcap');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('toon_anime');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('blobmixer_cosmic_fusion_live');
   const [activeShader, setActiveShader] = useState<any>(SHADER_PRESETS[0]);
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
@@ -69,9 +78,14 @@ export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = (
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(0, 0, 3.5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const profile = getQualityProfile();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: profile.antialias,
+      preserveDrawingBuffer: true,
+      precision: profile.precision,
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(resolvePixelRatio(profile));
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -154,30 +168,64 @@ export const MatCapShaderStudioModal: React.FC<MatCapShaderStudioModalProps> = (
 
     animate();
 
-    // Load Suzanne OBJ Geometry
-    const loadSuzanne = async () => {
-      if (objCacheRef.current['suzanne']) {
-        if (meshRef.current) {
-          meshRef.current.geometry.dispose();
-          meshRef.current.geometry = objCacheRef.current['suzanne'];
+    // Geometry Loader based on selectedShape
+    const loadGeometry = async () => {
+      let geo: THREE.BufferGeometry | null = null;
+
+      if (selectedShape === 'suzanne') {
+        if (objCacheRef.current['suzanne']) {
+          geo = objCacheRef.current['suzanne'];
+        } else {
+          try {
+            const res = await fetch(resolveAssetUrl('assets/models/suzanne.obj'));
+            const text = await res.text();
+            geo = parseOBJ(text);
+            geo.scale(1.2, 1.2, 1.2);
+            objCacheRef.current['suzanne'] = geo;
+          } catch (err) {
+            console.error('Error loading suzanne.obj', err);
+            geo = new THREE.SphereGeometry(1, 64, 64);
+          }
         }
-        return;
+      } else if (selectedShape === 'blob') {
+        const sphereGeo = new THREE.SphereGeometry(1.0, 128, 128);
+        const pos = sphereGeo.attributes.position;
+        const v = new THREE.Vector3();
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          const noise = Math.sin(v.x * 3.5) * Math.cos(v.y * 3.5) * Math.sin(v.z * 3.5) * 0.18 +
+                        Math.sin(v.x * 7.0) * Math.cos(v.z * 7.0) * 0.08;
+          v.multiplyScalar(1.0 + noise);
+          pos.setXYZ(i, v.x, v.y, v.z);
+        }
+        sphereGeo.computeVertexNormals();
+        geo = sphereGeo;
+      } else if (selectedShape === 'sphere') {
+        geo = new THREE.SphereGeometry(1, 64, 64);
+      } else if (selectedShape === 'torusKnot') {
+        geo = new THREE.TorusKnotGeometry(0.7, 0.25, 128, 32);
+      } else if (selectedShape === 'torus') {
+        geo = new THREE.TorusGeometry(0.75, 0.32, 32, 100);
+      } else if (selectedShape === 'capsule') {
+        geo = new THREE.CapsuleGeometry(0.55, 0.8, 32, 64);
+      } else if (selectedShape === 'dodecahedron') {
+        geo = new THREE.DodecahedronGeometry(1.0, 0);
+      } else if (selectedShape === 'icosahedron') {
+        geo = new THREE.IcosahedronGeometry(1.0, 2);
+      } else if (selectedShape === 'cylinder') {
+        geo = new THREE.CylinderGeometry(0.8, 0.8, 1.6, 64);
+      } else if (selectedShape === 'cube') {
+        geo = new THREE.BoxGeometry(1.4, 1.4, 1.4, 32, 32, 32);
+      } else if (selectedShape === 'plane') {
+        geo = new THREE.PlaneGeometry(2, 2, 64, 64);
       }
-      try {
-        const res = await fetch(resolveAssetUrl('assets/models/suzanne.obj'));
-        const text = await res.text();
-        const geo = parseOBJ(text);
-        geo.scale(1.2, 1.2, 1.2);
-        objCacheRef.current['suzanne'] = geo;
-        if (meshRef.current) {
-          meshRef.current.geometry.dispose();
-          meshRef.current.geometry = geo;
-        }
-      } catch (err) {
-        console.error('Error loading suzanne.obj', err);
+
+      if (meshRef.current && geo) {
+        meshRef.current.geometry.dispose();
+        meshRef.current.geometry = geo;
       }
     };
-    loadSuzanne();
+    loadGeometry();
 
     const resizeObserver = new ResizeObserver(() => {
       if (!container || !renderer) return;
@@ -354,23 +402,31 @@ void main() {
     }
   };
 
-  // Filter presets into the 4 curated categories
+  // Filter presets into categories with search
   const filteredPresets = ALL_MATERIAL_PRESETS.filter((preset) => {
-    if (activeCategory === 'Toon & Anime') {
-      return (
+    let matchCategory = true;
+    if (activeCategory === '🎨 Blobmixer') {
+      matchCategory = preset.category === '🎨 Blobmixer MatCaps';
+    } else if (activeCategory === '☀️ Summer Afternoon') {
+      matchCategory = preset.category === '☀️ Summer Afternoon';
+    } else if (activeCategory === 'Toon & Anime') {
+      matchCategory = (
         preset.category === 'Toon Shaders' ||
         preset.category === 'Flat Colors' ||
         preset.id === 'wonderlust_beach_shoreline'
       );
-    }
-    if (activeCategory === 'Fun & Magic') {
-      return preset.category === '✨ Fun & Magic';
-    }
-    if (activeCategory === 'Wonderlust') {
-      return preset.category === '🌍 Wonderlust';
-    }
-    if (activeCategory === 'Bright & Glass') {
-      return (
+    } else if (activeCategory === '🌿 Godot & Biomes') {
+      matchCategory = preset.category === '🌿 Godot Water & Grass' || preset.category === '🍃 Wayfinder & Grassworks';
+    } else if (activeCategory === '🌍 Wonderlust') {
+      matchCategory = preset.category === '🌍 Wonderlust';
+    } else if (activeCategory === '🍃 Wayfinder & Grassworks') {
+      matchCategory = preset.category === '🍃 Wayfinder & Grassworks';
+    } else if (activeCategory === '⚡ WebGPU & Cyber') {
+      matchCategory = preset.category === '⚡ WebGPU & Cyber';
+    } else if (activeCategory === '✨ Fun & Magic') {
+      matchCategory = preset.category === '✨ Fun & Magic' || preset.category === '🌊 Live Desktop Shaders';
+    } else if (activeCategory === 'Metals & Glass') {
+      matchCategory = (
         preset.category === 'Glass & Crystal' ||
         preset.category === 'Bright Colors' ||
         preset.category === 'Metals' ||
@@ -378,7 +434,14 @@ void main() {
         preset.category === 'Gems & Organics'
       );
     }
-    return true;
+
+    const q = searchQuery.toLowerCase().trim();
+    const matchSearch = q === '' ||
+      preset.name.toLowerCase().includes(q) ||
+      (preset.category && preset.category.toLowerCase().includes(q)) ||
+      (preset.description && preset.description.toLowerCase().includes(q));
+
+    return matchCategory && matchSearch;
   });
 
   if (!isOpen) return null;
@@ -394,13 +457,13 @@ void main() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-white tracking-wide">MatCap & Live Shader Studio</h2>
-              <p className="text-[10px] text-zinc-400">Mobile & Bare-Bones 3D Shader Preview</p>
+              <p className="text-[10px] text-zinc-400">Interactive 3D Materials, Shaders & MatCap Gallery</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all cursor-pointer"
             title="Close"
           >
             <X className="w-4 h-4" />
@@ -415,17 +478,39 @@ void main() {
 
             {/* Viewport Controls Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-zinc-900/90 border-t border-zinc-800 text-[11px]">
+              {/* Shape Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-zinc-400 text-[10px]">Shape:</span>
+                <select
+                  value={selectedShape}
+                  onChange={(e) => setSelectedShape(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:border-cyan-500"
+                >
+                  <option value="suzanne">Suzanne Monkey</option>
+                  <option value="blob">Organic Blob (Jelly)</option>
+                  <option value="sphere">Sphere</option>
+                  <option value="torusKnot">Torus Knot</option>
+                  <option value="torus">Torus Donut</option>
+                  <option value="capsule">Capsule</option>
+                  <option value="dodecahedron">Dodecahedron</option>
+                  <option value="icosahedron">Icosahedron</option>
+                  <option value="cube">Cube</option>
+                  <option value="cylinder">Cylinder</option>
+                  <option value="plane">Plane</option>
+                </select>
+              </div>
+
               {/* Mode Toggle */}
               <div className="flex items-center gap-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800">
                 <button
                   onClick={() => setMaterialMode('matcap')}
-                  className={"px-2.5 py-1 rounded-md font-medium transition-all " + (materialMode === 'matcap' ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-white')}
+                  className={"px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer " + (materialMode === 'matcap' ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-white')}
                 >
                   MatCap Paint
                 </button>
                 <button
                   onClick={() => setMaterialMode('shader')}
-                  className={"px-2.5 py-1 rounded-md font-medium transition-all " + (materialMode === 'shader' ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-white')}
+                  className={"px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer " + (materialMode === 'shader' ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-white')}
                 >
                   Live Shader
                 </button>
@@ -468,13 +553,24 @@ void main() {
 
           {/* Presets Gallery Column */}
           <div className="flex flex-col w-full md:w-80 lg:w-96 flex-shrink-0 bg-zinc-900 min-h-0">
-            {/* 4 Curated Categories */}
+            {/* Search Input Bar */}
+            <div className="p-2 border-b border-zinc-800 bg-zinc-950/60">
+              <input
+                type="text"
+                placeholder="Search materials (e.g. summer, blobmixer, ocean, glass)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 placeholder-zinc-500 text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            {/* Categories */}
             <div className="flex items-center gap-1.5 p-2 border-b border-zinc-800 overflow-x-auto scrollbar-none bg-zinc-950/40">
               {MOBILE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={"px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all " + (activeCategory === cat ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800')}
+                  className={"px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer " + (activeCategory === cat ? 'bg-cyan-500 text-zinc-950 shadow-sm' : 'bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800')}
                 >
                   {cat}
                 </button>

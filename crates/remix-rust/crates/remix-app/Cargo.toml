@@ -1,0 +1,21 @@
+[package]
+name = "remix-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+remix-core = { path = "../remix-core" }
+remix-render = { path = "../remix-render" }
+remix-gui = { path = "../remix-gui" }
+remix-formats = { path = "../remix-formats" }
+remix-audio-haptics = { path = "../remix-audio-haptics" }
+winit = "0.30"
+pollster = "0.4"
+wgpu = "24"
+bytemuck = { version = "1.21", features = ["derive"] }
+egui = "0.31"
+egui-winit = "0.31"
+egui-wgpu = "0.31"
+glam = "0.29"

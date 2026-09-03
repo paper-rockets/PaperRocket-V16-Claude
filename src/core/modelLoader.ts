@@ -14,6 +14,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { modelNormalization } from './modelNormalization';
 import { MaterialCache } from './materialCache';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import { getQualityProfile } from '../utils/deviceProfile';
 
 export type LoadingTier = 'tier1_full' | 'tier2_safe_geom' | 'tier3_raw_recovery' | 'tier4_point_cloud';
 
@@ -558,8 +559,12 @@ export class ModelLoaderService {
     root.traverse((child) => {
       if ((child as THREE.Mesh).isMesh || (child as THREE.Points).isPoints) {
         const mesh = child as THREE.Mesh;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        // Shadow flags follow the device profile: on low-power hardware the extra
+        // depth pass is skipped entirely, so flagging every mesh as a caster only
+        // grows the shadow frustum work if shadows are ever switched back on.
+        const shadowsEnabled = getQualityProfile().shadows;
+        mesh.castShadow = shadowsEnabled;
+        mesh.receiveShadow = shadowsEnabled;
 
         const geom = mesh.geometry;
         if (geom) {
@@ -660,6 +665,18 @@ export class ModelLoaderService {
           if ('map' in mat && (mat as any).map) {
             (mat as any).map.colorSpace = THREE.SRGBColorSpace;
             (mat as any).map.needsUpdate = true;
+          }
+
+          // Anisotropic filtering multiplies texture fetches per fragment. It is a
+          // bandwidth tax an entry-tier mobile GPU cannot absorb, so the profile
+          // caps it (1x = plain trilinear on low-power devices).
+          const maxAniso = getQualityProfile().maxAnisotropy;
+          for (const key of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap']) {
+            const tex = (mat as any)[key] as THREE.Texture | undefined;
+            if (tex && typeof tex.anisotropy === 'number' && tex.anisotropy > maxAniso) {
+              tex.anisotropy = maxAniso;
+              tex.needsUpdate = true;
+            }
           }
           if ('emissiveMap' in mat && (mat as any).emissiveMap) {
             (mat as any).emissiveMap.colorSpace = THREE.SRGBColorSpace;

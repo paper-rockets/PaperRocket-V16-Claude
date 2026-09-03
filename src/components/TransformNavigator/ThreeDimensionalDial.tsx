@@ -13,10 +13,12 @@ import {
   normalizeAngleDeg,
 } from '../../utils/mathUtils';
 import { haptics } from '../../utils/haptics';
+import { OuterDegreeIndicatorRing } from './OuterDegreeIndicatorRing';
 
 interface ThreeDimensionalDialProps {
   isLocked: boolean;
   accessibilityMode: AccessibilityMode;
+  theme?: 'light' | 'dark';
   onTranslate?: (data: TranslationEventPayload) => void;
   onRotate?: (data: RotationEventPayload) => void;
   onScale?: (data: ScaleEventPayload) => void;
@@ -27,12 +29,14 @@ interface ThreeDimensionalDialProps {
 export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
   isLocked,
   accessibilityMode,
+  theme = 'dark',
   onTranslate,
   onRotate,
   onScale,
   onInteractionStart,
   onInteractionEnd,
 }) => {
+  const isLight = theme === 'light';
   const dialRef = useRef<HTMLDivElement>(null);
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
   const [hoveredArc, setHoveredArc] = useState<'x' | 'y' | 'z' | null>(null);
@@ -527,31 +531,42 @@ export const ThreeDimensionalDial: React.FC<ThreeDimensionalDialProps> = ({
         transition={{ type: 'spring', stiffness: 350, damping: 26 }}
         className="absolute inset-0 rounded-full flex items-center justify-center overflow-hidden"
         style={{
-          background: 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
-          boxShadow:
-            'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
-          border: '1px solid rgba(255,255,255,0.09)',
+          background: isLight
+            ? 'radial-gradient(circle at 50% 38%, #ffffff 0%, #f4f4f7 55%, #e4e4e9 100%)'
+            : 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
+          boxShadow: isLight
+            ? 'inset 0 6px 16px rgba(0,0,0,0.06), inset 0 -2px 6px rgba(255,255,255,0.9), inset 0 0 24px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.08)'
+            : 'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
+          border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.09)',
         }}
       >
         {/* Subtle Specular Top Arc Reflection for 3D Beveled Lip */}
         <div
           className="absolute inset-0 rounded-full pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
+            background: isLight
+              ? 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.8), transparent 70%)'
+              : 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
           }}
         />
 
         {/* Concentric Recessed Boundary Rings */}
-        <div className="absolute w-[86%] h-[86%] rounded-full border border-dashed border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]" />
-        <div className="absolute w-[62%] h-[62%] rounded-full border border-white/[0.07] shadow-[0_1px_2px_rgba(255,255,255,0.04)]" />
-        <div className="absolute w-[44%] h-[44%] rounded-full border border-dashed border-white/[0.08] shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]" />
+        <div className={`absolute w-[86%] h-[86%] rounded-full border border-dashed ${isLight ? 'border-neutral-300 shadow-[inset_0_1px_3px_rgba(0,0,0,0.06)]' : 'border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]'}`} />
+        <div className={`absolute w-[62%] h-[62%] rounded-full border ${isLight ? 'border-neutral-300/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]' : 'border-white/[0.07] shadow-[0_1px_2px_rgba(255,255,255,0.04)]'}`} />
+        <div className={`absolute w-[44%] h-[44%] rounded-full border border-dashed ${isLight ? 'border-neutral-300 shadow-[inset_0_2px_4px_rgba(0,0,0,0.08)]' : 'border-white/[0.08] shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]'}`} />
 
         {/* Global Reference Grid Crosshairs */}
-        <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-        <div className="absolute h-full w-[1px] bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-        <div className="absolute w-full h-[1px] rotate-45 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-        <div className="absolute w-full h-[1px] -rotate-45 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        <div className={`absolute w-full h-[1px] ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-300 to-transparent' : 'bg-gradient-to-r from-transparent via-white/10 to-transparent'}`} />
+        <div className={`absolute h-full w-[1px] ${isLight ? 'bg-gradient-to-b from-transparent via-neutral-300 to-transparent' : 'bg-gradient-to-b from-transparent via-white/10 to-transparent'}`} />
+        <div className={`absolute w-full h-[1px] rotate-45 ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-200 to-transparent' : 'bg-gradient-to-r from-transparent via-white/5 to-transparent'}`} />
+        <div className={`absolute w-full h-[1px] -rotate-45 ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-200 to-transparent' : 'bg-gradient-to-r from-transparent via-white/5 to-transparent'}`} />
       </motion.div>
+
+      {/* Fixed Outer Ring Degree Indicators (0, 45, 90, 135, 180, 225, 270, 315 degrees) */}
+      <OuterDegreeIndicatorRing
+        theme={theme}
+        size={230}
+      />
 
       {/* ------------------------------------------------------------- */}
       {/* Interactive Concentric Dashed Rotation Arcs (Rx, Ry, Rz) SVG  */}

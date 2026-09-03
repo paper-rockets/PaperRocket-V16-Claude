@@ -1,4 +1,9 @@
 import { DESKTOP_SHADERS_MATERIAL } from './desktopShaders';
+import { GODOT_MATERIAL_PRESETS } from './godotShaders';
+import { BLOBMIXER_MATERIAL_PRESETS } from './blobmixerShaders';
+import { WAYFINDER_MATERIAL_PRESETS } from './wayfinderShaders';
+import { GRASSWORKS_MATERIAL_PRESETS } from './grassworksShaders';
+import { REZE_MATERIAL_PRESETS } from './rezeShaders';
 
 // High-Quality Procedural MatCap Canvas Generator
 function createMatCap(drawFn) {
@@ -2177,10 +2182,15 @@ void main() {
 
 // ASSEMBLE ALL PRESETS
 export const ALL_MATERIAL_PRESETS = [
+  ...BLOBMIXER_MATERIAL_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
+  ...SUMMER_SHADERS.map(p => ({ ...p, url: createMatCap(p.generate) })),
+  ...GODOT_MATERIAL_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
   ...WONDERLUST_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
+  ...WAYFINDER_MATERIAL_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
+  ...GRASSWORKS_MATERIAL_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
+  ...REZE_MATERIAL_PRESETS.map(p => ({ ...p, url: createMatCap(p.generate) })),
   ...DESKTOP_SHADERS_MATERIAL.map(p => ({ ...p, url: createMatCap(p.generate) })),
   ...FUN_MAGIC_SHADERS.map(p => ({ ...p, url: createMatCap(p.generate) })),
-  ...SUMMER_SHADERS.map(p => ({ ...p, url: createMatCap(p.generate) })),
   ...TOON_PRESETS.map(p => p.generate ? { ...p, url: createMatCap(p.generate) } : p),
   ...FLAT_COLOR_PRESETS.map(p => p.generate ? { ...p, url: createMatCap(p.generate) } : p),
   ...GLASS_PRESETS.map(p => p.generate ? { ...p, url: createMatCap(p.generate) } : p),
@@ -2192,10 +2202,14 @@ export const ALL_MATERIAL_PRESETS = [
 
 export const PRESET_CATEGORIES = [
   'All',
+  '🎨 Blobmixer MatCaps',
+  '☀️ Summer Afternoon',
+  '🌿 Godot Water & Grass',
   '🌍 Wonderlust',
+  '🍃 Wayfinder & Grassworks',
+  '⚡ WebGPU & Cyber',
   '🌊 Live Desktop Shaders',
   '✨ Fun & Magic',
-  '☀️ Summer Afternoon',
   'Toon Shaders',
   'Flat Colors',
   'Glass & Crystal',

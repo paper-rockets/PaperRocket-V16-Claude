@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 
 import { BrushSettings } from '../types';
+import { getQualityProfile, resolvePixelRatio } from '../utils/deviceProfile';
 
 interface ColorStudioModalProps {
   isOpen: boolean;
@@ -105,9 +106,14 @@ function MatCapShaderTabContent({
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(0, 0, 3.5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const profile = getQualityProfile();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: profile.antialias,
+      preserveDrawingBuffer: true,
+      precision: profile.precision,
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(resolvePixelRatio(profile));
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 

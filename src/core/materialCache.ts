@@ -7,6 +7,7 @@ import {
   getEffectFragmentShader,
   globalShaderRegistry,
 } from './animatedShaders';
+import { getQualityProfile } from '../utils/deviceProfile';
 
 /**
  * Normalizes any hex or color string to valid lowercase 6-digit #rrggbb
@@ -231,21 +232,41 @@ export class MaterialCache {
         material = shaderMat;
       }
     } else if (matType === 'shaded') {
-      // 4. PBR (Lit / Shaded): Dynamic Physically-Based Material responding to scene lighting, shadows & reflections
-      material = new THREE.MeshStandardMaterial({
-        color: color,
-        roughness: Math.max(0.05, Math.min(1.0, settings.roughness ?? 0.35)),
-        metalness: Math.max(0.0, Math.min(1.0, settings.metalness ?? 0.15)),
-        transparent: !isOpaque,
-        opacity: effectiveOpacity,
-        side: THREE.DoubleSide,
-        depthTest: true,
-        depthWrite: isOpaque,
-        polygonOffset: true,
-        polygonOffsetFactor: -3.0,
-        polygonOffsetUnits: -3.0,
-        envMapIntensity: 1.0,
-      });
+      // 4. Lit / Shaded material responding to scene lighting.
+      //
+      // MeshStandardMaterial runs a full Cook-Torrance BRDF per fragment. On an
+      // entry-tier mobile GPU that is a meaningful share of the frame for strokes
+      // that cover large parts of the screen, so the low-power profile substitutes
+      // MeshLambertMaterial: same lit look from the same lights, Gouraud-cheap.
+      const profile = getQualityProfile();
+      if (profile.materialTier === 'simple') {
+        material = new THREE.MeshLambertMaterial({
+          color: color,
+          transparent: !isOpaque,
+          opacity: effectiveOpacity,
+          side: THREE.DoubleSide,
+          depthTest: true,
+          depthWrite: isOpaque,
+          polygonOffset: true,
+          polygonOffsetFactor: -3.0,
+          polygonOffsetUnits: -3.0,
+        });
+      } else {
+        material = new THREE.MeshStandardMaterial({
+          color: color,
+          roughness: Math.max(0.05, Math.min(1.0, settings.roughness ?? 0.35)),
+          metalness: Math.max(0.0, Math.min(1.0, settings.metalness ?? 0.15)),
+          transparent: !isOpaque,
+          opacity: effectiveOpacity,
+          side: THREE.DoubleSide,
+          depthTest: true,
+          depthWrite: isOpaque,
+          polygonOffset: true,
+          polygonOffsetFactor: -3.0,
+          polygonOffsetUnits: -3.0,
+          envMapIntensity: 1.0,
+        });
+      }
     } else {
       // 5. Flat (Shadeless / Unlit): Pure solid color unaffected by scene lighting for clean graphic illustration
       material = new THREE.MeshBasicMaterial({

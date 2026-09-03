@@ -46,6 +46,7 @@ import {
 } from '../core/modelConverter';
 import { ModelStorage } from '../core/modelStorage';
 import { StudioEngine } from '../core/studioEngine';
+import { getQualityProfile, resolvePixelRatio } from '../utils/deviceProfile';
 
 interface ModelConverterModalProps {
   isOpen: boolean;
@@ -155,13 +156,19 @@ export const ModelConverterModal: React.FC<ModelConverterModalProps> = ({
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.05, 500);
     camera.position.set(2.5, 2, 3.5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    const profile = getQualityProfile();
+    const renderer = new THREE.WebGLRenderer({
+      antialias: profile.antialias,
+      alpha: true,
+      powerPreference: profile.powerPreference,
+      precision: profile.precision,
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(resolvePixelRatio(profile));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = profile.shadows;
+    renderer.shadowMap.type = profile.shadowMapType;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);

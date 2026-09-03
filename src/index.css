@@ -20,3 +20,43 @@ body,
 canvas {
   touch-action: none;
 }
+
+/*
+ * Low-Power UI Rendering Mode
+ *
+ * Applied to <html> by the device profile on entry-tier tablets and phones.
+ *
+ * Every element, icon and control stays exactly where it is - this only turns off
+ * two compositor effects that are disproportionately expensive on a Mali/Adreno
+ * entry-tier GPU while a live WebGL canvas sits underneath:
+ *
+ *   1. backdrop-filter, used by ~79 panels here. Each one makes the compositor
+ *      snapshot and blur the pixels behind it every frame. Panels keep their
+ *      translucent look, they just no longer blur what is behind them.
+ *   2. Infinite decorative keyframe animations (pulse / ping / spin), which keep
+ *      the compositor awake and defeat the engine's idle frame pacing.
+ */
+html.low-power-ui *,
+html.low-power-ui *::before,
+html.low-power-ui *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.low-power-ui .animate-pulse,
+html.low-power-ui .animate-ping,
+html.low-power-ui .animate-spin {
+  animation: none !important;
+}
+
+/* Respect the OS-level reduced-motion setting on every device. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

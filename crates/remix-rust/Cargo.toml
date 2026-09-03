@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/remix-core",
+    "crates/remix-render",
+    "crates/remix-formats",
+    "crates/remix-gui",
+    "crates/remix-audio-haptics",
+    "crates/remix-app",
+]
+
+[workspace.package]
+version = "14.0.0"
+edition = "2021"
+authors = ["Paper Rocket"]
+license = "MIT OR Apache-2.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

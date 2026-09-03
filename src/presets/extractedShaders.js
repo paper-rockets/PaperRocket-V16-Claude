@@ -1,7 +1,17 @@
 import { DESKTOP_SHADERS_EXTRACTED } from './desktopShaders';
 import { WONDERLUST_SHADERS_EXTRACTED } from './wonderlustShaders';
+import { GODOT_SHADERS_EXTRACTED } from './godotShaders';
+import { WAYFINDER_SHADERS_EXTRACTED } from './wayfinderShaders';
+import { BLOBMIXER_SHADERS_EXTRACTED } from './blobmixerShaders';
+import { GRASSWORKS_SHADERS_EXTRACTED } from './grassworksShaders';
+import { REZE_SHADERS_EXTRACTED } from './rezeShaders';
 
 export const EXTRACTED_SHADERS_DATA = [
+    ...WAYFINDER_SHADERS_EXTRACTED,
+    ...BLOBMIXER_SHADERS_EXTRACTED,
+    ...GRASSWORKS_SHADERS_EXTRACTED,
+    ...REZE_SHADERS_EXTRACTED,
+    ...GODOT_SHADERS_EXTRACTED,
     ...WONDERLUST_SHADERS_EXTRACTED,
     ...DESKTOP_SHADERS_EXTRACTED,
     {

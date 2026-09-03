@@ -23,6 +23,11 @@ export class UVPaintingEngine {
   // Per-layer offscreen canvas textures
   private layerCanvases: Map<string, LayerCanvasEntry> = new Map();
   private layerHistory: Map<string, { stack: ImageData[]; index: number }> = new Map();
+  /**
+   * Undo depth per layer. Each entry is a full-canvas ImageData, so at 2048^2 a
+   * single snapshot is 16 MB of JS heap - the profile trims both the resolution
+   * and the depth on memory-constrained devices.
+   */
   private maxHistory: number = 8;
 
   // GPU Compositing Engine
@@ -37,9 +42,10 @@ export class UVPaintingEngine {
   private activeMeshes: THREE.Mesh[] = [];
   private overlayMeshes: THREE.Mesh[] = [];
 
-  constructor(resolution: number = 2048) {
+  constructor(resolution: number = 2048, historyDepth: number = 8) {
     this.width = resolution;
     this.height = resolution;
+    this.maxHistory = Math.max(1, historyDepth);
     this.gpuCompositor = new GPULayerCompositor(this.width);
 
     // Initialize default base layer canvas

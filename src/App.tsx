@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import * as THREE from 'three';
 import {
   ToolType,
@@ -23,32 +23,73 @@ import { Viewport } from './components/Viewport';
 import { Toolbar } from './components/Toolbar';
 import { LayerPanel } from './components/LayerPanel';
 import { BrushSettingsPanel } from './components/BrushSettingsPanel';
-import { RenderSettingsPanel } from './components/RenderSettingsPanel';
-import { ModelLibraryModal } from './components/ModelLibraryModal';
-import { ExportModal } from './components/ExportModal';
-import { RaycastSettingsModal } from './components/RaycastSettingsModal';
-import { ModelConverterModal } from './components/ModelConverterModal';
-import { SkyEnvironmentPanel } from './components/SkyEnvironmentPanel';
 import { ModelDisplayPanel } from './components/ModelDisplayPanel';
 import { SpatialNavGizmo } from './components/SpatialNavGizmo';
 import { TransformNavigator } from './components/TransformNavigator/TransformNavigator';
 import { PaperRocketTactileWheel } from './components/PaperRocketTactileWheel';
 import { TactileSpatialController } from './components/TactileSpatialController';
 import { ScreenCenterCrosshair } from './components/ScreenCenterCrosshair';
-import { IlluminationStudioModal } from './components/IlluminationStudioModal';
-import { LiquifyPanel } from './components/LiquifyPanel';
-import { CurveDecimateModal } from './components/CurveDecimateModal';
-import { CustomMirrorModal } from './components/CustomMirrorModal';
-import { BentGuideModal } from './components/BentGuideModal';
-import { ARViewerModal } from './components/ARViewerModal';
-import { NumpadModal } from './components/NumpadModal';
-import { ColorStudioModal } from './components/ColorStudioModal';
-import { HolisticDNAInspector } from './components/HolisticDNAInspector';
-import { FloatingReferenceClipboard } from './components/FloatingReferenceClipboard';
-import { ScaffoldingModal } from './components/ScaffoldingModal';
-import { MobileConnectModal } from './components/MobileConnectModal';
-import { NavigatorSandbox } from './components/Sandbox/NavigatorSandbox';
+import { FpsCounter } from './components/FpsCounter';
+import { DeferredPanel } from './components/DeferredPanel';
+import { publishCameraPose, publishFps } from './core/telemetryStore';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
+
+/**
+ * Deferred UI.
+ *
+ * These panels and modals are closed on load, but eagerly importing them pulled
+ * their entire dependency graph (extra Three.js scenes, jszip, QR encoding, the
+ * shader preset tables) into the initial bundle. Parsing that costs real time on
+ * a mobile CPU before the first frame can render. Each now loads the first time
+ * the user opens it, and stays cached afterwards.
+ */
+const RenderSettingsPanel = lazy(() =>
+  import('./components/RenderSettingsPanel').then((m) => ({ default: m.RenderSettingsPanel }))
+);
+const ModelLibraryModal = lazy(() =>
+  import('./components/ModelLibraryModal').then((m) => ({ default: m.ModelLibraryModal }))
+);
+const ExportModal = lazy(() => import('./components/ExportModal').then((m) => ({ default: m.ExportModal })));
+const RaycastSettingsModal = lazy(() =>
+  import('./components/RaycastSettingsModal').then((m) => ({ default: m.RaycastSettingsModal }))
+);
+const ModelConverterModal = lazy(() =>
+  import('./components/ModelConverterModal').then((m) => ({ default: m.ModelConverterModal }))
+);
+const SkyEnvironmentPanel = lazy(() =>
+  import('./components/SkyEnvironmentPanel').then((m) => ({ default: m.SkyEnvironmentPanel }))
+);
+const IlluminationStudioModal = lazy(() =>
+  import('./components/IlluminationStudioModal').then((m) => ({ default: m.IlluminationStudioModal }))
+);
+const LiquifyPanel = lazy(() => import('./components/LiquifyPanel').then((m) => ({ default: m.LiquifyPanel })));
+const CurveDecimateModal = lazy(() =>
+  import('./components/CurveDecimateModal').then((m) => ({ default: m.CurveDecimateModal }))
+);
+const CustomMirrorModal = lazy(() =>
+  import('./components/CustomMirrorModal').then((m) => ({ default: m.CustomMirrorModal }))
+);
+const BentGuideModal = lazy(() => import('./components/BentGuideModal').then((m) => ({ default: m.BentGuideModal })));
+const ARViewerModal = lazy(() => import('./components/ARViewerModal').then((m) => ({ default: m.ARViewerModal })));
+const NumpadModal = lazy(() => import('./components/NumpadModal').then((m) => ({ default: m.NumpadModal })));
+const ColorStudioModal = lazy(() =>
+  import('./components/ColorStudioModal').then((m) => ({ default: m.ColorStudioModal }))
+);
+const HolisticDNAInspector = lazy(() =>
+  import('./components/HolisticDNAInspector').then((m) => ({ default: m.HolisticDNAInspector }))
+);
+const FloatingReferenceClipboard = lazy(() =>
+  import('./components/FloatingReferenceClipboard').then((m) => ({ default: m.FloatingReferenceClipboard }))
+);
+const ScaffoldingModal = lazy(() =>
+  import('./components/ScaffoldingModal').then((m) => ({ default: m.ScaffoldingModal }))
+);
+const MobileConnectModal = lazy(() =>
+  import('./components/MobileConnectModal').then((m) => ({ default: m.MobileConnectModal }))
+);
+const NavigatorSandbox = lazy(() =>
+  import('./components/Sandbox/NavigatorSandbox').then((m) => ({ default: m.NavigatorSandbox }))
+);
 import { haptics } from './utils/haptics';
 import { setGlobalSoundEnabled } from './utils/audio';
 import { TauriBridge } from './core/tauriBridge';
@@ -246,7 +287,6 @@ export default function App() {
   // Sprint 1-5 Spatial Editing & Hardware States
   const [fingerPenMode, setFingerPenMode] = useState<boolean>(true);
   const [navigatorSensitivity, setNavigatorSensitivity] = useState<number>(0.5);
-  const [fps, setFps] = useState<number>(60);
   const [projectionMode, setProjectionMode] = useState<'perspective' | 'orthographic'>('perspective');
   const [isStylusDetected, setIsStylusDetected] = useState<boolean>(false);
   const [isLiquifyOpen, setIsLiquifyOpen] = useState<boolean>(false);
@@ -324,11 +364,6 @@ export default function App() {
     };
   }, []);
 
-  const [cameraSpherical, setCameraSpherical] = useState<{ radius: number; theta: number; phi: number }>({
-    radius: 3.5,
-    theta: Math.PI / 4,
-    phi: Math.PI / 3,
-  });
   const [activeGuide, setActiveGuide] = useState<Guide3D | null>(null);
 
   // Silent Background Auto-Save Persistence
@@ -413,8 +448,11 @@ export default function App() {
     inst.onGPUInfoUpdate = (info) => {
       setGpuInfo(info);
     };
+    // FPS and camera pose arrive every frame. They go to the telemetry store, not
+    // React state - FpsCounter and any pose consumer subscribe as leaves, so a
+    // 60 fps stream never re-renders this component tree.
     inst.onFpsUpdate = (f) => {
-      setFps(f);
+      publishFps(f);
     };
     inst.onProjectionChange = (mode) => {
       setProjectionMode(mode);
@@ -431,7 +469,8 @@ export default function App() {
       setPerfectView(pv);
     };
     inst.onCameraChange = (sph) => {
-      setCameraSpherical(sph);
+      // sph is a pooled object owned by the engine; only its numbers are read.
+      publishCameraPose(sph.radius, sph.theta, sph.phi);
     };
     inst.onAutoSaveTrigger = (reason) => {
       triggerAutoSave(reason === 'model_loaded' ? 'model' : 'changes');
@@ -892,18 +931,7 @@ export default function App() {
       />
 
       {/* Frame-Per-Second Counter: Bottom-Left with responsive mobile adjustment (Requirement 5) */}
-      <div
-        style={{
-          transform: uiScale !== 1.0 ? `scale(${uiScale})` : undefined,
-          transformOrigin: 'bottom left',
-        }}
-        className="fixed bottom-3 left-3 sm:bottom-4 sm:left-4 z-20 pointer-events-none select-none"
-      >
-        <div className="px-2 py-0.5 rounded-md bg-[#141519]/90 backdrop-blur-md border border-zinc-800 text-[10px] font-mono text-zinc-400 shadow-sm flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse" />
-          <span>{fps} FPS</span>
-        </div>
-      </div>
+      <FpsCounter uiScale={uiScale} />
 
       {/* Floating Restore Buttons when Controllers are Hidden */}
       {activeController === 'hidden' && (
@@ -948,6 +976,7 @@ export default function App() {
       {gizmoMode !== 'Hidden' && (activeController === 'navigator' || activeController === 'both') && (
         <TransformNavigator
           initialMode="2d"
+          theme={theme}
           onTranslate={handleGizmoTranslate}
           onRotate={handleGizmoRotate}
           onScale={handleGizmoScale}
@@ -986,7 +1015,7 @@ export default function App() {
       {gizmoMode !== 'Hidden' && (activeController === 'tactile' || activeController === 'both') && (
         <PaperRocketTactileWheel
           engine={engine}
-          cameraSpherical={cameraSpherical}
+          theme={theme}
           brushSettings={brushSettings}
           onUpdateBrushSettings={setBrushSettings}
           onReset={() => {
@@ -1075,232 +1104,266 @@ export default function App() {
 
       {/* Render Mode & Post-Processing Shaders Modal */}
       {isRenderSettingsOpen && (
-        <RenderSettingsPanel
-          settings={postSettings}
-          setSettings={setPostSettings}
-          onClose={() => setIsRenderSettingsOpen(false)}
-          onRecalculateNormals={() => engine?.recalculateMeshNormals()}
-          gpuInfo={gpuInfo}
-        />
+        <Suspense fallback={null}>
+          <RenderSettingsPanel
+            settings={postSettings}
+            setSettings={setPostSettings}
+            onClose={() => setIsRenderSettingsOpen(false)}
+            onRecalculateNormals={() => engine?.recalculateMeshNormals()}
+            gpuInfo={gpuInfo}
+          />
+        </Suspense>
       )}
 
       {/* 3D Model Ingestion / Presets Modal (37+ Models with Draco compression) */}
       {isModelsOpen && (
-        <ModelLibraryModal
-          engine={engine}
-          onClose={() => setIsModelsOpen(false)}
-          activeModelName={activeModelName}
-          onOpenConverter={() => {
-            setIsModelsOpen(false);
-            setDroppedFilesForConverter(null);
-            setIsConverterOpen(true);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ModelLibraryModal
+            engine={engine}
+            onClose={() => setIsModelsOpen(false)}
+            activeModelName={activeModelName}
+            onOpenConverter={() => {
+              setIsModelsOpen(false);
+              setDroppedFilesForConverter(null);
+              setIsConverterOpen(true);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* 3D Model Converter, Draco Compressor & In-App Storage Suite */}
       {isConverterOpen && (
-        <ModelConverterModal
-          isOpen={isConverterOpen}
-          onClose={() => {
-            setIsConverterOpen(false);
-            setDroppedFilesForConverter(null);
-          }}
-          engine={engine}
-          initialFiles={droppedFilesForConverter}
-          theme={theme}
-          onModelLoadedToCanvas={(name) => {
-            setActiveModelName(name);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ModelConverterModal
+            isOpen={isConverterOpen}
+            onClose={() => {
+              setIsConverterOpen(false);
+              setDroppedFilesForConverter(null);
+            }}
+            engine={engine}
+            initialFiles={droppedFilesForConverter}
+            theme={theme}
+            onModelLoadedToCanvas={(name) => {
+              setActiveModelName(name);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Export 3D / Textures Modal */}
       {isExportOpen && (
-        <ExportModal
-          engine={engine}
-          onClose={() => setIsExportOpen(false)}
-          activeModelName={activeModelName}
-        />
+        <Suspense fallback={null}>
+          <ExportModal
+            engine={engine}
+            onClose={() => setIsExportOpen(false)}
+            activeModelName={activeModelName}
+          />
+        </Suspense>
       )}
 
       {/* 3D Surface Raycasting & Snapping Parameters Modal */}
       {isRaycastSettingsOpen && (
-        <RaycastSettingsModal
-          brushSettings={brushSettings}
-          setBrushSettings={setBrushSettings}
-          onClose={() => setIsRaycastSettingsOpen(false)}
-          onRecalculateNormals={() => engine?.recalculateMeshNormals()}
-          theme={theme}
-        />
+        <Suspense fallback={null}>
+          <RaycastSettingsModal
+            brushSettings={brushSettings}
+            setBrushSettings={setBrushSettings}
+            onClose={() => setIsRaycastSettingsOpen(false)}
+            onRecalculateNormals={() => engine?.recalculateMeshNormals()}
+            theme={theme}
+          />
+        </Suspense>
       )}
 
       {/* Skybox & Atmosphere Environment Studio (from webgpu-skybox-studio) */}
-      <SkyEnvironmentPanel
-        engine={engine}
-        isOpen={isIlluminationOpen}
-        onClose={() => setIsIlluminationOpen(false)}
-        theme={theme}
-      />
+      <DeferredPanel active={isIlluminationOpen}>
+        <SkyEnvironmentPanel
+          engine={engine}
+          isOpen={isIlluminationOpen}
+          onClose={() => setIsIlluminationOpen(false)}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Volumetric Liquify Panel (Sprint 2) */}
       {(isLiquifyOpen || tool === 'liquify') && (
-        <LiquifyPanel
-          settings={liquifySettings}
-          onSettingsChange={setLiquifySettings}
-          isCompareActive={isCompareActive}
-          onToggleCompare={(active) => {
-            setIsCompareActive(active);
-            engine?.toggleLiquifyCompare(active);
-          }}
-          onApply={() => {
-            engine?.commitLiquify();
-            setIsLiquifyOpen(false);
-            setTool('brush');
-          }}
-          onCancel={() => {
-            engine?.cancelLiquify();
-            setIsLiquifyOpen(false);
-            setTool('brush');
-          }}
-          onReset={() => {
-            engine?.cancelLiquify();
-            engine?.startLiquifySession();
-          }}
-          theme={theme}
-        />
+        <Suspense fallback={null}>
+          <LiquifyPanel
+            settings={liquifySettings}
+            onSettingsChange={setLiquifySettings}
+            isCompareActive={isCompareActive}
+            onToggleCompare={(active) => {
+              setIsCompareActive(active);
+              engine?.toggleLiquifyCompare(active);
+            }}
+            onApply={() => {
+              engine?.commitLiquify();
+              setIsLiquifyOpen(false);
+              setTool('brush');
+            }}
+            onCancel={() => {
+              engine?.cancelLiquify();
+              setIsLiquifyOpen(false);
+              setTool('brush');
+            }}
+            onReset={() => {
+              engine?.cancelLiquify();
+              engine?.startLiquifySession();
+            }}
+            theme={theme}
+          />
+        </Suspense>
       )}
 
       {/* RDP Curve Decimation Modal (Sprint 2) */}
-      <CurveDecimateModal
-        isOpen={isDecimateOpen}
-        onClose={() => setIsDecimateOpen(false)}
-        onApplyDecimation={(epsilon, preserveTopology) => {
-          if (engine) {
-            const count = engine.decimateActiveLayerCurves(epsilon, preserveTopology);
-            console.log(`Simplified curves with RDP (epsilon: ${epsilon}), remaining points: ${count}`);
-          }
-        }}
-        theme={theme}
-      />
+      <DeferredPanel active={isDecimateOpen}>
+        <CurveDecimateModal
+          isOpen={isDecimateOpen}
+          onClose={() => setIsDecimateOpen(false)}
+          onApplyDecimation={(epsilon, preserveTopology) => {
+            if (engine) {
+              const count = engine.decimateActiveLayerCurves(epsilon, preserveTopology);
+              console.log(`Simplified curves with RDP (epsilon: ${epsilon}), remaining points: ${count}`);
+            }
+          }}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Bent 3D Manifold Guide & Lofting Modal */}
-      <BentGuideModal
-        isOpen={isBentGuideOpen}
-        onClose={() => setIsBentGuideOpen(false)}
-        engine={engine}
-        onOpenNumpad={(t) => setNumpadTarget(t)}
-        theme={theme}
-      />
+      <DeferredPanel active={isBentGuideOpen}>
+        <BentGuideModal
+          isOpen={isBentGuideOpen}
+          onClose={() => setIsBentGuideOpen(false)}
+          engine={engine}
+          onOpenNumpad={(t) => setNumpadTarget(t)}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* 3D Collision Scaffolding & Procedural Armatures Modal (Phase 4) */}
-      <ScaffoldingModal
-        isOpen={isScaffoldingOpen}
-        onClose={() => setIsScaffoldingOpen(false)}
-        engine={engine}
-        onOpenNumpad={(t) => setNumpadTarget(t)}
-        theme={theme}
-      />
+      <DeferredPanel active={isScaffoldingOpen}>
+        <ScaffoldingModal
+          isOpen={isScaffoldingOpen}
+          onClose={() => setIsScaffoldingOpen(false)}
+          engine={engine}
+          onOpenNumpad={(t) => setNumpadTarget(t)}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Floating 2D Blueprint Clipboard & Reference Moodboard (Phase 4) */}
-      <FloatingReferenceClipboard
-        isOpen={isClipboardOpen}
-        onClose={() => setIsClipboardOpen(false)}
-        referenceImages={referenceImages}
-        setReferenceImages={setReferenceImages}
-        theme={theme}
-      />
+      <DeferredPanel active={isClipboardOpen}>
+        <FloatingReferenceClipboard
+          isOpen={isClipboardOpen}
+          onClose={() => setIsClipboardOpen(false)}
+          referenceImages={referenceImages}
+          setReferenceImages={setReferenceImages}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Arbitrary 3D Mirror Plane Modal (Sprint 4) */}
-      <CustomMirrorModal
-        isOpen={isCustomMirrorOpen}
-        onClose={() => setIsCustomMirrorOpen(false)}
-        config={customMirrorConfig}
-        onConfigChange={(newCfg) => {
-          setCustomMirrorConfig(newCfg);
-          if (engine) {
-            engine.updateCustomMirrorPlane(newCfg.planeOrigin, newCfg.planeNormal);
-            setSymmetry('custom_plane');
-          }
-        }}
-        onAlignToCamera={() => {
-          if (engine) {
-            const viewDir = engine.camera.getWorldDirection(new THREE.Vector3()).negate();
-            const camPos = engine.camera.position.clone().add(viewDir.clone().multiplyScalar(-1.5));
-            const newCfg = {
-              planeOrigin: [camPos.x, camPos.y, camPos.z] as [number, number, number],
-              planeNormal: [viewDir.x, viewDir.y, viewDir.z] as [number, number, number],
-              visible: true,
-            };
+      <DeferredPanel active={isCustomMirrorOpen}>
+        <CustomMirrorModal
+          isOpen={isCustomMirrorOpen}
+          onClose={() => setIsCustomMirrorOpen(false)}
+          config={customMirrorConfig}
+          onConfigChange={(newCfg) => {
             setCustomMirrorConfig(newCfg);
-            engine.updateCustomMirrorPlane(newCfg.planeOrigin, newCfg.planeNormal);
-            setSymmetry('custom_plane');
-          }
-        }}
-        theme={theme}
-      />
+            if (engine) {
+              engine.updateCustomMirrorPlane(newCfg.planeOrigin, newCfg.planeNormal);
+              setSymmetry('custom_plane');
+            }
+          }}
+          onAlignToCamera={() => {
+            if (engine) {
+              const viewDir = engine.camera.getWorldDirection(new THREE.Vector3()).negate();
+              const camPos = engine.camera.position.clone().add(viewDir.clone().multiplyScalar(-1.5));
+              const newCfg = {
+                planeOrigin: [camPos.x, camPos.y, camPos.z] as [number, number, number],
+                planeNormal: [viewDir.x, viewDir.y, viewDir.z] as [number, number, number],
+                visible: true,
+              };
+              setCustomMirrorConfig(newCfg);
+              engine.updateCustomMirrorPlane(newCfg.planeOrigin, newCfg.planeNormal);
+              setSymmetry('custom_plane');
+            }
+          }}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* WebXR AR Viewer Modal (Sprint 5) */}
-      <ARViewerModal
-        isOpen={isARViewerOpen}
-        onClose={() => setIsARViewerOpen(false)}
-        engine={engine}
-        theme={theme}
-      />
+      <DeferredPanel active={isARViewerOpen}>
+        <ARViewerModal
+          isOpen={isARViewerOpen}
+          onClose={() => setIsARViewerOpen(false)}
+          engine={engine}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Local Mobile Device Testing Modal */}
-      <MobileConnectModal
-        isOpen={isMobileConnectOpen}
-        onClose={() => setIsMobileConnectOpen(false)}
-      />
+      <DeferredPanel active={isMobileConnectOpen}>
+        <MobileConnectModal
+          isOpen={isMobileConnectOpen}
+          onClose={() => setIsMobileConnectOpen(false)}
+        />
+      </DeferredPanel>
 
       {/* Floating On-Screen Numpad Modal */}
-      <NumpadModal
-        target={numpadTarget}
-        onClose={() => setNumpadTarget(null)}
-        theme={theme}
-      />
+      <DeferredPanel active={numpadTarget !== null}>
+        <NumpadModal
+          target={numpadTarget}
+          onClose={() => setNumpadTarget(null)}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Advanced Color Studio Modal (HSV + OKLCh Polar + 1-Click Shaders) */}
-      <ColorStudioModal
-        isOpen={isColorStudioOpen}
-        onClose={() => setIsColorStudioOpen(false)}
-        currentColor={brushSettings.color || '#38bdf8'}
-        onChangeColor={(hex) => setBrushSettings((prev) => ({ ...prev, color: hex }))}
-        onApplyBrushSettings={(newSettings) =>
-          setBrushSettings((prev) => ({ ...prev, ...newSettings }))
-        }
-        onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
-        onSampleFromScreen={() => {
-          setIsColorStudioOpen(false);
-          setTool('eyedropper');
-        }}
-        theme={theme}
-      />
+      <DeferredPanel active={isColorStudioOpen}>
+        <ColorStudioModal
+          isOpen={isColorStudioOpen}
+          onClose={() => setIsColorStudioOpen(false)}
+          currentColor={brushSettings.color || '#38bdf8'}
+          onChangeColor={(hex) => setBrushSettings((prev) => ({ ...prev, color: hex }))}
+          onApplyBrushSettings={(newSettings) =>
+            setBrushSettings((prev) => ({ ...prev, ...newSettings }))
+          }
+          onApplyToModel={(mat) => engine?.setModelCustomMaterial(mat)}
+          onSampleFromScreen={() => {
+            setIsColorStudioOpen(false);
+            setTool('eyedropper');
+          }}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Holistic DNA Inspector & Injector Popup */}
-      <HolisticDNAInspector
-        dna={activeDNA}
-        onClose={() => setActiveDNA(null)}
-        onInjectDNA={(dna) => {
-          setBrushSettings((prev) => ({
-            ...prev,
-            color: dna.colorHex,
-            size: dna.size,
-            opacity: dna.opacity,
-            roughness: dna.roughness,
-            metalness: dna.metalness,
-            emissiveIntensity: dna.emissiveIntensity,
-            materialType: dna.materialType,
-            profile: dna.profile,
-            patternType: dna.patternType,
-            patternScale: dna.patternScale,
-            patternIntensity: dna.patternIntensity,
-            shaderEffect: dna.shaderEffect,
-          }));
-        }}
-        theme={theme}
-      />
+      <DeferredPanel active={activeDNA !== null}>
+        <HolisticDNAInspector
+          dna={activeDNA}
+          onClose={() => setActiveDNA(null)}
+          onInjectDNA={(dna) => {
+            setBrushSettings((prev) => ({
+              ...prev,
+              color: dna.colorHex,
+              size: dna.size,
+              opacity: dna.opacity,
+              roughness: dna.roughness,
+              metalness: dna.metalness,
+              emissiveIntensity: dna.emissiveIntensity,
+              materialType: dna.materialType,
+              profile: dna.profile,
+              patternType: dna.patternType,
+              patternScale: dna.patternScale,
+              patternIntensity: dna.patternIntensity,
+              shaderEffect: dna.shaderEffect,
+            }));
+          }}
+          theme={theme}
+        />
+      </DeferredPanel>
 
       {/* Snapped Shape Notice Toast */}
       {snappedShapeNotice && (
@@ -1327,7 +1390,11 @@ export default function App() {
       )}
 
       {/* Navigator Sandbox with 6 Interaction Variations */}
-      {showSandbox && <NavigatorSandbox onClose={() => setShowSandbox(false)} />}
+      {showSandbox && (
+        <Suspense fallback={null}>
+          <NavigatorSandbox onClose={() => setShowSandbox(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -58,6 +58,7 @@ import { ensureGeometryLinearVertexColors, oklabMix } from './colorMath';
 import { modelExporter } from './modelExporter';
 import { modelNormalization } from './modelNormalization';
 import { resolveAssetUrl } from '../utils/assetUrl';
+import { getQualityProfile, resolvePixelRatio, QualityProfile } from '../utils/deviceProfile';
 
 // Patch Three.js geometry and mesh prototypes with BVH accelerated raycasting
 try {
@@ -80,6 +81,64 @@ const _baryCoord = new THREE.Vector3();
 const _interpolatedNorm = new THREE.Vector3();
 const _invObjMatrix = new THREE.Matrix4();
 const _camDirScratch = new THREE.Vector3();
+
+// Additional scratch objects shared by the per-frame loop and the raycast hot path.
+// Every one of these replaces an allocation that previously happened per frame or
+// per pointer sample (raycastModel runs up to 48x per pointer move while drawing).
+const _ndcScratch = new THREE.Vector2();
+const _cameraOffset = new THREE.Vector3();
+const _viewDirScratch = new THREE.Vector3();
+const _worldNormalScratch = new THREE.Vector3();
+const _worldPointScratch = new THREE.Vector3();
+const _localPointScratch = new THREE.Vector3();
+const _localNormalScratch = new THREE.Vector3();
+const _invModelMatrix = new THREE.Matrix4();
+const _planeNormalScratch = new THREE.Vector3();
+const _planeCenterScratch = new THREE.Vector3();
+const _planeScratch = new THREE.Plane();
+const _rayHitScratch = new THREE.Vector3();
+const _uvScratch = new THREE.Vector2();
+const _panForward = new THREE.Vector3();
+const _panRight = new THREE.Vector3();
+const _panUp = new THREE.Vector3();
+const _cursorUp = new THREE.Vector3(0, 0, 1);
+const _cursorQuat = new THREE.Quaternion();
+const _cursorNormal = new THREE.Vector3();
+
+// Canonical view axes for perfect-view detection (previously reallocated every frame).
+const _AXIS_FRONT = new THREE.Vector3(0, 0, -1);
+const _AXIS_BACK = new THREE.Vector3(0, 0, 1);
+const _AXIS_TOP = new THREE.Vector3(0, -1, 0);
+const _AXIS_BOTTOM = new THREE.Vector3(0, 1, 0);
+const _AXIS_RIGHT = new THREE.Vector3(-1, 0, 0);
+const _AXIS_LEFT = new THREE.Vector3(1, 0, 0);
+
+// Seam-bridging micro-jitter offsets, hoisted out of the raycast miss path.
+const _SEAM_JITTER: ReadonlyArray<readonly [number, number]> = [
+  [0.0018, 0],
+  [-0.0018, 0],
+  [0, 0.0018],
+  [0, -0.0018],
+  [0.00126, 0.00126],
+  [-0.00126, -0.00126],
+];
+
+/**
+ * Result of a surface or spatial-plane raycast.
+ *
+ * Instances are pooled per engine and mutated in place, so the vectors are only
+ * valid until the next raycast. Anything stored beyond that (stroke points,
+ * undo history) must clone them first.
+ */
+export interface RaycastResult {
+  hit: boolean;
+  point: THREE.Vector3;
+  worldPoint: THREE.Vector3;
+  normal: THREE.Vector3;
+  worldNormal: THREE.Vector3;
+  uv?: THREE.Vector2;
+  mesh?: THREE.Mesh;
+}
 
 declare global {
   interface Window {
@@ -182,6 +241,73 @@ export class StudioEngine {
   private loopLightDir: THREE.Vector3 = new THREE.Vector3();
   private loopResolution: THREE.Vector2 = new THREE.Vector2();
 
+  // Adaptive quality profile & frame pacing
+  private profile: QualityProfile;
+  private minFrameIntervalMs: number = 0;
+  private idleFrameIntervalMs: number = 0;
+  private lastRenderTime: number = 0;
+  private lastActivityTime: number = performance.now();
+  private hasAnimatedContent: boolean = false;
+  private isContextLost: boolean = false;
+  private resizeRafId: number | null = null;
+  private pendingResize: { width: number; height: number } | null = null;
+
+  // Reused raycast scratch: rebuilt in place instead of reallocated per sample.
+  private raycastTargetScratch: THREE.Mesh[] = [];
+  private intersectScratch: THREE.Intersection[] = [];
+  private raycastResult: RaycastResult = {
+    hit: false,
+    point: new THREE.Vector3(),
+    worldPoint: new THREE.Vector3(),
+    normal: new THREE.Vector3(),
+    worldNormal: new THREE.Vector3(),
+    uv: undefined,
+    mesh: undefined,
+  };
+
+  // Reused per-frame payloads so the render loop allocates nothing.
+  private cameraChangePayload = { radius: 0, theta: 0, phi: 0 };
+  private perfectViewScratch: PerfectViewInfo = { isPerfect: false, view: null, depthAxis: null };
+
+  // Bound listeners retained so dispose() can actually remove them.
+  private handleWindowResize = (): void => {
+    this.refreshRect();
+  };
+  private handleWindowScroll = (): void => {
+    this.refreshRect();
+  };
+  private handleContextLost = (event: Event): void => {
+    // Preventing the default tells the browser we intend to restore the context.
+    event.preventDefault();
+    this.isContextLost = true;
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    console.warn('WebGL context lost - rendering paused until restore.');
+  };
+  private handleContextRestored = (): void => {
+    this.isContextLost = false;
+    try {
+      this.renderer.setPixelRatio(resolvePixelRatio(this.profile));
+      this.renderer.shadowMap.enabled = this.profile.shadows;
+      this.renderer.shadowMap.type = this.profile.shadowMapType;
+      if (this.container) {
+        this.resize(this.container.clientWidth, this.container.clientHeight);
+      }
+      this.materialCache.clear();
+      this.scene.environment = null;
+      this.ensureBaselineLighting();
+    } catch (e) {
+      console.warn('WebGL context restore notice:', e);
+    }
+    this.markDirty();
+    if (this.animationFrameId === null) {
+      this.startLoop();
+    }
+    console.info('WebGL context restored - rendering resumed.');
+  };
+
   // Transform Joystick & Spatial State
   private transformActiveScope: TransformTargetScope = 'all';
   private currentTransformTotalMatrix: THREE.Matrix4 = new THREE.Matrix4();
@@ -235,31 +361,66 @@ export class StudioEngine {
   private guideHelperMesh: THREE.Mesh | null = null;
   private cachedRect: DOMRect | null = null;
   private drawingPlaneMesh: THREE.Mesh | null = null;
+  private generatedEnvTexture: THREE.Texture | null = null;
+  /**
+   * Whether the procedural sky dome may be shown. Low-power devices start with it
+   * off - it is a full-screen procedural shader pass - but the user can re-enable
+   * it explicitly from the Skybox panel via setSkyPreset().
+   */
+  private skyEnabled: boolean = true;
   private clipboardStrokes: StrokeDescriptor[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
 
+    // 0. Resolve the adaptive quality profile once. Every renderer, engine and
+    // material decision below reads from it so a low-power tablet never pays for
+    // desktop-class fill rate, VRAM or shader precision.
+    const profile = getQualityProfile();
+    this.profile = profile;
+
     // 1. WebGL Renderer with Stencil Buffer & Depth Preservation
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: profile.antialias,
       stencil: true, // Required for stencil masking pipeline
-      preserveDrawingBuffer: true,
-      powerPreference: 'high-performance',
+      // preserveDrawingBuffer forces the driver to keep a full backbuffer copy every
+      // frame. Only pay for it where screenshot/export flows need it.
+      preserveDrawingBuffer: !profile.isLowPower,
+      powerPreference: profile.powerPreference,
+      // highp fragment math stalls the Mali/Adreno ALUs; mediump is ample for
+      // the shading this app performs.
+      precision: profile.precision,
+      failIfMajorPerformanceCaveat: false,
     });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(resolvePixelRatio(profile));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.autoClear = true;
     this.renderer.autoClearStencil = true;
+
+    // Shadow policy: off entirely on low-power hardware (a single depth pass over
+    // the model doubles draw calls for a barely visible result at 1.0 DPR).
+    this.renderer.shadowMap.enabled = profile.shadows;
+    this.renderer.shadowMap.type = profile.shadowMapType;
+    this.renderer.shadowMap.autoUpdate = profile.shadows;
+
     container.appendChild(this.renderer.domElement);
+
+    // Frame pacing derived from the profile.
+    this.minFrameIntervalMs = profile.targetFps > 0 ? 1000 / profile.targetFps : 0;
+    this.idleFrameIntervalMs = profile.idleFps > 0 ? 1000 / profile.idleFps : 0;
 
     // Cache viewport bounding rect
     this.refreshRect();
-    window.addEventListener('resize', () => this.refreshRect());
-    window.addEventListener('scroll', () => this.refreshRect(), true);
+    window.addEventListener('resize', this.handleWindowResize);
+    window.addEventListener('scroll', this.handleWindowScroll, true);
+
+    // WebGL context loss recovery (common on memory-pressured Android tablets when
+    // the app is backgrounded or another GPU-heavy tab claims the context).
+    this.renderer.domElement.addEventListener('webglcontextlost', this.handleContextLost, false);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.handleContextRestored, false);
 
     // Run asynchronous WebGPU and GPU hardware detection
     this.detectGPUHardware();
@@ -300,7 +461,7 @@ export class StudioEngine {
     this.raycaster = new THREE.Raycaster();
     this.beadGenerator = new ConformalBeadGenerator();
     this.materialCache = new MaterialCache();
-    this.uvEngine = new UVPaintingEngine(2048);
+    this.uvEngine = new UVPaintingEngine(profile.uvPaintResolution, profile.uvHistoryDepth);
     this.uvEngine.setRenderer(this.renderer);
     this.liquifyEngine = new VolumetricLiquifyEngine(this.beadGenerator);
     this.loftEngine = new LoftGuideEngine();
@@ -333,10 +494,17 @@ export class StudioEngine {
     this.lightsRoot.add(this.dirLight1);
     this.lightsRoot.add(this.dirLight2);
 
-    // Procedural Sky System with Atmospheric Scattering and Synced Lighting
+    // Procedural Sky System with Atmospheric Scattering and Synced Lighting.
+    //
+    // The sky dome is a radius-500 sphere drawn first with BackSide culling, so its
+    // atmospheric-scattering fragment shader runs across effectively the whole
+    // screen every frame. That is the single most expensive pass on a fill-rate
+    // limited GPU, so low-power devices start on the flat background instead. The
+    // user can still turn the sky on from the Skybox panel at any time.
     this.skyEngine = new ProceduralSkyEngine(this.scene);
     this.skyEngine.setLights(this.dirLight1, this.ambientLight, this.dirLight2);
-    this.skyEngine.applyPreset('daylight');
+    this.skyEnabled = !profile.isLowPower;
+    this.skyEngine.applyPreset(this.skyEnabled ? 'daylight' : 'off');
 
     // Ensure baseline lighting and reflection environment are immediately ready
     this.ensureBaselineLighting();
@@ -401,12 +569,14 @@ export class StudioEngine {
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
 
+    // Raycast results are pooled and mutated in place, so every vector that
+    // escapes this method is cloned.
     if (isSpatial) {
       const res = this.raycastSpatialPlane(ndcX, ndcY, spatialDepth);
       if (!res) return null;
       return {
-        position: res.worldPoint,
-        normal: res.worldNormal,
+        position: res.worldPoint.clone(),
+        normal: res.worldNormal.clone(),
         surfaceOffset: 0.002,
         pressure: 0.5,
         isSurfaceHit: false,
@@ -416,11 +586,11 @@ export class StudioEngine {
       const res = this.raycastModel(ndcX, ndcY);
       if (!res || !res.hit) return null;
       return {
-        position: res.worldPoint,
-        normal: res.worldNormal,
+        position: res.worldPoint.clone(),
+        normal: res.worldNormal.clone(),
         surfaceOffset: 0.004,
         pressure: 0.5,
-        uv: res.uv,
+        uv: res.uv ? res.uv.clone() : undefined,
         hitMeshId: res.mesh?.uuid,
         isSurfaceHit: true,
         time: performance.now(),
@@ -881,62 +1051,60 @@ export class StudioEngine {
   /**
    * Raycasts onto a free 3D virtual construction plane in space (Air Draw mode)
    */
-  public raycastSpatialPlane(screenX: number, screenY: number, depthOffset: number = 0): {
-    hit: boolean;
-    point: THREE.Vector3;
-    worldPoint: THREE.Vector3;
-    normal: THREE.Vector3;
-    worldNormal: THREE.Vector3;
-    uv?: THREE.Vector2;
-    mesh?: THREE.Mesh;
-  } {
-    const coords = new THREE.Vector2(screenX, screenY);
-    this.raycaster.setFromCamera(coords, this.camera);
+  /**
+   * Raycasts onto the camera-facing spatial drawing plane.
+   *
+   * Called once per stroke sub-sample (up to 48x per pointer move), so it computes
+   * into module scratch and returns a reused result object. Callers that retain the
+   * vectors past the current call must clone them - startStroke/addStrokePoint do.
+   */
+  public raycastSpatialPlane(screenX: number, screenY: number, depthOffset: number = 0): RaycastResult {
+    _ndcScratch.set(screenX, screenY);
+    this.raycaster.setFromCamera(_ndcScratch, this.camera);
 
-    const camDir = new THREE.Vector3();
-    this.camera.getWorldDirection(camDir);
-    const planeNormal = camDir.clone().negate().normalize(); // Facing camera
-    const planeCenter = new THREE.Vector3(0, 0, depthOffset);
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, planeCenter);
+    this.camera.getWorldDirection(_planeNormalScratch);
+    _planeNormalScratch.negate().normalize(); // Facing camera
+    _planeCenterScratch.set(0, 0, depthOffset);
+    _planeScratch.setFromNormalAndCoplanarPoint(_planeNormalScratch, _planeCenterScratch);
 
-    const worldHit = new THREE.Vector3();
-    const hit = this.raycaster.ray.intersectPlane(plane, worldHit);
-    const rawPoint = hit ? hit.clone() : this.raycaster.ray.at(5.0, new THREE.Vector3());
+    const hit = this.raycaster.ray.intersectPlane(_planeScratch, _rayHitScratch);
+    if (!hit) {
+      this.raycaster.ray.at(5.0, _rayHitScratch);
+    }
 
     // Apply +0.002 plane elevation offset
-    const worldPoint = rawPoint.clone().addScaledVector(planeNormal, 0.002);
+    _worldPointScratch.copy(_rayHitScratch).addScaledVector(_planeNormalScratch, 0.002);
 
-    const invModelMatrix = this.modelRoot.matrixWorld.clone().invert();
-    const localPoint = worldPoint.clone().applyMatrix4(invModelMatrix);
-    const localNormal = planeNormal.clone().transformDirection(invModelMatrix).normalize();
+    _invModelMatrix.copy(this.modelRoot.matrixWorld).invert();
+    _localPointScratch.copy(_worldPointScratch).applyMatrix4(_invModelMatrix);
+    _localNormalScratch.copy(_planeNormalScratch).transformDirection(_invModelMatrix).normalize();
 
-    return {
-      hit: true,
-      point: localPoint,
-      worldPoint,
-      normal: localNormal,
-      worldNormal: planeNormal,
-      uv: new THREE.Vector2(0.5, 0.5),
-    };
+    const out = this.raycastResult;
+    out.hit = true;
+    out.point = _localPointScratch;
+    out.worldPoint = _worldPointScratch;
+    out.normal = _localNormalScratch;
+    out.worldNormal = _planeNormalScratch;
+    out.uv = _uvScratch.set(0.5, 0.5);
+    out.mesh = undefined;
+    return out;
   }
 
   /**
    * Raycasts from screen coordinates (normalized -1 to 1) onto front-facing model polygons
    * with BVH acceleration and smooth barycentric normal interpolation.
    */
-  public raycastModel(
-    screenX: number,
-    screenY: number,
-    settings?: BrushSettings
-  ): {
-    hit: boolean;
-    point: THREE.Vector3;
-    worldPoint: THREE.Vector3;
-    normal: THREE.Vector3;
-    worldNormal: THREE.Vector3;
-    uv?: THREE.Vector2;
-    mesh?: THREE.Mesh;
-  } | null {
+  /**
+   * Rebuilds the reused raycast target list in place.
+   *
+   * The previous implementation spread three arrays into a fresh array on every
+   * call; raycastModel runs up to 48x per pointer move, so that alone produced
+   * hundreds of short-lived arrays per second of drawing.
+   */
+  private collectRaycastTargets(): THREE.Mesh[] {
+    const targets = this.raycastTargetScratch;
+    targets.length = 0;
+
     // Ensure targetMeshes has all active visible meshes
     if (!this.targetMeshes || this.targetMeshes.length === 0) {
       this.targetMeshes = [];
@@ -947,44 +1115,60 @@ export class StudioEngine {
       });
     }
 
+    for (let i = 0; i < this.targetMeshes.length; i++) targets.push(this.targetMeshes[i]);
+
     // Include active loft guides, scaffolding collision meshes, and guide collider meshes
-    const allRaycastTargets = [...this.targetMeshes];
     if (this.loftEngine) {
-      allRaycastTargets.push(...this.loftEngine.getActiveGuideMeshes());
+      const guides = this.loftEngine.getActiveGuideMeshes();
+      for (let i = 0; i < guides.length; i++) targets.push(guides[i]);
     }
     if (this.scaffoldingEngine) {
-      allRaycastTargets.push(...this.scaffoldingEngine.getActiveColliderMeshes());
+      const colliders = this.scaffoldingEngine.getActiveColliderMeshes();
+      for (let i = 0; i < colliders.length; i++) targets.push(colliders[i]);
     }
     for (const colliderMesh of this.guideColliderMeshes.values()) {
-      if (colliderMesh.visible) {
-        allRaycastTargets.push(colliderMesh);
-      }
+      if (colliderMesh.visible) targets.push(colliderMesh);
     }
 
-    const coords = new THREE.Vector2(screenX, screenY);
-    this.raycaster.setFromCamera(coords, this.camera);
+    return targets;
+  }
 
-    let intersects = this.raycaster.intersectObjects(allRaycastTargets, false);
+  /**
+   * Raycasts from screen coordinates (normalized -1 to 1) onto front-facing model
+   * polygons with BVH acceleration and smooth barycentric normal interpolation.
+   *
+   * Hot path: returns a reused result object backed by module scratch vectors.
+   * Callers that retain the geometry must clone it before the next raycast.
+   */
+  public raycastModel(
+    screenX: number,
+    screenY: number,
+    settings?: BrushSettings
+  ): RaycastResult | null {
+    const allRaycastTargets = this.collectRaycastTargets();
 
-    // Seam & Gap Bridging fallback: if direct ray misses, test a micro-cross jitter pattern
-    if (intersects.length === 0 && settings?.raycastSeamBridging !== false) {
-      const jitterD = 0.0018; // ~1-2 screen pixels
-      const offsets = [
-        [jitterD, 0],
-        [-jitterD, 0],
-        [0, jitterD],
-        [0, -jitterD],
-        [jitterD * 0.7, jitterD * 0.7],
-        [-jitterD * 0.7, -jitterD * 0.7],
-      ];
-      for (const [ox, oy] of offsets) {
-        coords.set(screenX + ox, screenY + oy);
-        this.raycaster.setFromCamera(coords, this.camera);
-        const subHits = this.raycaster.intersectObjects(allRaycastTargets, false);
-        if (subHits.length > 0) {
-          intersects = subHits;
-          break;
-        }
+    _ndcScratch.set(screenX, screenY);
+    this.raycaster.setFromCamera(_ndcScratch, this.camera);
+
+    const intersects = this.intersectScratch;
+    intersects.length = 0;
+    this.raycaster.intersectObjects(allRaycastTargets, false, intersects);
+
+    // Seam & Gap Bridging fallback: if direct ray misses, test a micro-cross jitter
+    // pattern. Six extra raycasts per miss is expensive on entry-tier GPUs, so the
+    // low-power profile disables it unless a brush explicitly opts in.
+    const seamBridgingEnabled =
+      settings?.raycastSeamBridging !== undefined
+        ? settings.raycastSeamBridging
+        : this.profile.seamBridging;
+
+    if (intersects.length === 0 && seamBridgingEnabled) {
+      for (let i = 0; i < _SEAM_JITTER.length; i++) {
+        const [ox, oy] = _SEAM_JITTER[i];
+        _ndcScratch.set(screenX + ox, screenY + oy);
+        this.raycaster.setFromCamera(_ndcScratch, this.camera);
+        this.raycaster.intersectObjects(allRaycastTargets, false, intersects);
+        if (intersects.length > 0) break;
       }
     }
 
@@ -1049,16 +1233,21 @@ export class StudioEngine {
           .normalize();
 
         // Transform into world space
-        smoothNormal = _interpolatedNorm.clone().transformDirection(mesh.matrixWorld).normalize();
-        if (isNaN(smoothNormal.x) || isNaN(smoothNormal.y) || isNaN(smoothNormal.z)) {
-          smoothNormal = null;
+        _interpolatedNorm.transformDirection(mesh.matrixWorld).normalize();
+        if (!isNaN(_interpolatedNorm.x) && !isNaN(_interpolatedNorm.y) && !isNaN(_interpolatedNorm.z)) {
+          smoothNormal = _interpolatedNorm;
         }
       }
     }
 
-    let worldNormal = smoothNormal || (hit.face
-      ? hit.face.normal.clone().transformDirection(mesh.matrixWorld).normalize()
-      : new THREE.Vector3(0, 1, 0));
+    const worldNormal = _worldNormalScratch;
+    if (smoothNormal) {
+      worldNormal.copy(smoothNormal);
+    } else if (hit.face) {
+      worldNormal.copy(hit.face.normal).transformDirection(mesh.matrixWorld).normalize();
+    } else {
+      worldNormal.set(0, 1, 0);
+    }
 
     // Ensure normal points outward towards camera
     this.camera.getWorldPosition(_camDirScratch);
@@ -1069,38 +1258,39 @@ export class StudioEngine {
 
     // Apply surface elevation bias for 3D models to eradicate z-fighting
     const surfaceOffset = settings?.surfaceOffset ?? 0.002;
-    const worldPoint = hit.point.clone().addScaledVector(worldNormal, surfaceOffset);
+    _worldPointScratch.copy(hit.point).addScaledVector(worldNormal, surfaceOffset);
 
     // Transform into local modelRoot coordinate space
-    const invModelMatrix = this.modelRoot.matrixWorld.clone().invert();
-    const localPoint = worldPoint.clone().applyMatrix4(invModelMatrix);
-    const localNormal = worldNormal.clone().transformDirection(invModelMatrix).normalize();
+    _invModelMatrix.copy(this.modelRoot.matrixWorld).invert();
+    _localPointScratch.copy(_worldPointScratch).applyMatrix4(_invModelMatrix);
+    _localNormalScratch.copy(worldNormal).transformDirection(_invModelMatrix).normalize();
 
     let uv = hit.uv;
     if (!uv && hit.point) {
-      const u = 0.5 + Math.atan2(localPoint.z, localPoint.x) / (2 * Math.PI);
-      const v = 0.5 - Math.asin(Math.max(-1, Math.min(1, localPoint.y / 2.0))) / Math.PI;
-      uv = new THREE.Vector2(u, v);
+      const u = 0.5 + Math.atan2(_localPointScratch.z, _localPointScratch.x) / (2 * Math.PI);
+      const v = 0.5 - Math.asin(Math.max(-1, Math.min(1, _localPointScratch.y / 2.0))) / Math.PI;
+      uv = _uvScratch.set(u, v);
     }
 
-    const result = {
-      hit: true,
-      point: localPoint,
-      worldPoint,
-      normal: localNormal,
-      worldNormal,
-      uv,
-      mesh,
-    };
+    const result = this.raycastResult;
+    result.hit = true;
+    result.point = _localPointScratch;
+    result.worldPoint = _worldPointScratch;
+    result.normal = _localNormalScratch;
+    result.worldNormal = worldNormal;
+    result.uv = uv;
+    result.mesh = mesh;
 
-    // Dispatch RAY_HIT event for ecosystem telemetry
-    if (typeof window !== 'undefined') {
+    // Dispatch RAY_HIT event for ecosystem telemetry.
+    // Constructing a CustomEvent per hit is pure waste when nobody is listening,
+    // so it is gated on an explicit opt-in flag set by whoever subscribes.
+    if (typeof window !== 'undefined' && (window as any).__RAY_HIT_TELEMETRY__) {
       window.dispatchEvent(
         new CustomEvent('RAY_HIT', {
           detail: {
-            point: worldPoint,
-            normal: worldNormal,
-            uv,
+            point: _worldPointScratch.clone(),
+            normal: worldNormal.clone(),
+            uv: uv ? uv.clone() : undefined,
             meshName: mesh.name || mesh.uuid,
           },
         })
@@ -1122,18 +1312,19 @@ export class StudioEngine {
     if (result && result.worldPoint) {
       this.cursorDecal.visible = true;
       this.cursorDecal.position.copy(result.worldPoint).addScaledVector(result.worldNormal, 0.005);
-      
-      // Orient cursor ring along surface/plane normal
-      const normal = result.worldNormal.clone().normalize();
-      const up = new THREE.Vector3(0, 0, 1);
-      const quat = new THREE.Quaternion().setFromUnitVectors(up, normal);
-      this.cursorDecal.setRotationFromQuaternion(quat);
+
+      // Orient cursor ring along surface/plane normal (scratch objects: this runs
+      // on every hover pointer-move event).
+      _cursorNormal.copy(result.worldNormal).normalize();
+      _cursorQuat.setFromUnitVectors(_cursorUp, _cursorNormal);
+      this.cursorDecal.setRotationFromQuaternion(_cursorQuat);
 
       const scale = brushSize;
       this.cursorDecal.scale.set(scale, scale, scale);
     } else {
       this.cursorDecal.visible = false;
     }
+    this.markDirty();
   }
 
   public hideCursor(): void {
@@ -1205,7 +1396,7 @@ export class StudioEngine {
       surfaceOffset: settings.surfaceOffset || 0.002,
       pressure: smoothed.pressure,
       isSurfaceHit: !isSpatial,
-      uv: rayResult.uv,
+      uv: rayResult.uv ? rayResult.uv.clone() : undefined,
       time: performance.now(),
     };
     this.activePoints.push(firstPoint);
@@ -1267,7 +1458,12 @@ export class StudioEngine {
 
     // Sub-sample screen movements so fast sweeps calculate surface contact points smoothly without skipping
     const sampleDensity = settings.raycastSampleDensity || 'high';
-    const densityMaxSteps = sampleDensity === 'ultra' ? 48 : sampleDensity === 'standard' ? 16 : 32;
+    const requestedMaxSteps = sampleDensity === 'ultra' ? 48 : sampleDensity === 'standard' ? 16 : 32;
+    // Each sub-step is a full BVH raycast. On entry-tier mobile GPUs an unbounded
+    // 48-step sweep per pointer event is the dominant cost while drawing, so the
+    // profile caps it; stroke fidelity is preserved because the smoother already
+    // interpolates between captured points.
+    const densityMaxSteps = Math.min(requestedMaxSteps, this.profile.maxStrokeSubSteps);
     const maxStepDist = sampleDensity === 'ultra' ? 0.003 : 0.005;
     const steps = Math.min(densityMaxSteps, Math.max(1, Math.ceil(screenDist / maxStepDist)));
     const isSpatial = settings.drawingMode === 'spatial_3d' || tool === 'free_brush';
@@ -1315,7 +1511,7 @@ export class StudioEngine {
         surfaceOffset: settings.surfaceOffset || 0.002,
         pressure: currPressure,
         isSurfaceHit: !isSpatial,
-        uv: rayResult.uv,
+        uv: rayResult.uv ? rayResult.uv.clone() : undefined,
         time: performance.now(),
       };
 
@@ -1364,11 +1560,17 @@ export class StudioEngine {
       }
     }
 
-    this.lastScreenCoords = { x: targetX, y: targetY };
+    if (this.lastScreenCoords) {
+      this.lastScreenCoords.x = targetX;
+      this.lastScreenCoords.y = targetY;
+    } else {
+      this.lastScreenCoords = { x: targetX, y: targetY };
+    }
 
     if (this.activePoints.length > 0) {
       this.updateActiveStrokeGeometry(settings, symmetry);
     }
+    this.markDirty();
   }
 
   /**
@@ -2735,22 +2937,26 @@ export class StudioEngine {
     // Restrict polar angle to avoid flipping
     const eps = 0.01;
     this.targetSpherical.phi = Math.max(eps, Math.min(Math.PI - eps, this.targetSpherical.phi));
+    this.markDirty();
   }
 
   public pan(deltaX: number, deltaY: number): void {
     const panSpeed = 0.0025 * (this.cameraSpherical.radius / 3.0);
-    const forward = this.camera.getWorldDirection(new THREE.Vector3());
-    const right = new THREE.Vector3().crossVectors(forward, this.camera.up).normalize();
-    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    // Scratch vectors: pan runs on every pointer-move during a camera drag.
+    const forward = this.camera.getWorldDirection(_panForward);
+    const right = _panRight.crossVectors(forward, this.camera.up).normalize();
+    const up = _panUp.crossVectors(right, forward).normalize();
 
     this.targetPosition.addScaledVector(right, -deltaX * panSpeed);
     this.targetPosition.addScaledVector(up, deltaY * panSpeed);
+    this.markDirty();
   }
 
   public zoom(deltaDistance: number): void {
     const zoomSpeed = 0.0015;
     this.targetSpherical.radius += deltaDistance * zoomSpeed * this.targetSpherical.radius;
     this.targetSpherical.radius = Math.max(0.4, Math.min(25.0, this.targetSpherical.radius));
+    this.markDirty();
   }
 
   public getCameraSpherical(): { radius: number; theta: number; phi: number } {
@@ -3296,36 +3502,49 @@ export class StudioEngine {
    * Detects if the current camera view has snapped to a "Perfect View" (orthographic elevation).
    * Identifies the depth axis to allow automatic UI collapse and prevent Z plotting errors.
    */
+  /**
+   * Detects an axis-aligned "perfect" camera view.
+   *
+   * Runs every frame, so it writes into a reused result object and compares against
+   * module-level axis constants instead of allocating eight objects per call.
+   * The returned object is owned by the engine - copy fields out before retaining it.
+   */
   public getPerfectView(): PerfectViewInfo {
-    const dir = this.camera.getWorldDirection(new THREE.Vector3()).normalize();
+    const dir = this.camera.getWorldDirection(_viewDirScratch).normalize();
     const threshold = 0.985; // ~10 degrees tolerance
+    const out = this.perfectViewScratch;
 
-    // Front: looking along -Z
-    if (dir.dot(new THREE.Vector3(0, 0, -1)) > threshold) {
-      return { isPerfect: true, view: 'front', depthAxis: 'z' };
-    }
-    // Back: looking along +Z
-    if (dir.dot(new THREE.Vector3(0, 0, 1)) > threshold) {
-      return { isPerfect: true, view: 'back', depthAxis: 'z' };
-    }
-    // Top: looking along -Y
-    if (dir.dot(new THREE.Vector3(0, -1, 0)) > threshold) {
-      return { isPerfect: true, view: 'top', depthAxis: 'y' };
-    }
-    // Bottom: looking along +Y
-    if (dir.dot(new THREE.Vector3(0, 1, 0)) > threshold) {
-      return { isPerfect: true, view: 'bottom', depthAxis: 'y' };
-    }
-    // Right: looking along -X
-    if (dir.dot(new THREE.Vector3(-1, 0, 0)) > threshold) {
-      return { isPerfect: true, view: 'right', depthAxis: 'x' };
-    }
-    // Left: looking along +X
-    if (dir.dot(new THREE.Vector3(1, 0, 0)) > threshold) {
-      return { isPerfect: true, view: 'left', depthAxis: 'x' };
+    if (dir.dot(_AXIS_FRONT) > threshold) {
+      out.isPerfect = true;
+      out.view = 'front';
+      out.depthAxis = 'z';
+    } else if (dir.dot(_AXIS_BACK) > threshold) {
+      out.isPerfect = true;
+      out.view = 'back';
+      out.depthAxis = 'z';
+    } else if (dir.dot(_AXIS_TOP) > threshold) {
+      out.isPerfect = true;
+      out.view = 'top';
+      out.depthAxis = 'y';
+    } else if (dir.dot(_AXIS_BOTTOM) > threshold) {
+      out.isPerfect = true;
+      out.view = 'bottom';
+      out.depthAxis = 'y';
+    } else if (dir.dot(_AXIS_RIGHT) > threshold) {
+      out.isPerfect = true;
+      out.view = 'right';
+      out.depthAxis = 'x';
+    } else if (dir.dot(_AXIS_LEFT) > threshold) {
+      out.isPerfect = true;
+      out.view = 'left';
+      out.depthAxis = 'x';
+    } else {
+      out.isPerfect = false;
+      out.view = null;
+      out.depthAxis = null;
     }
 
-    return { isPerfect: false, view: null, depthAxis: null };
+    return out;
   }
 
   public getCamera(): THREE.PerspectiveCamera {
@@ -3514,22 +3733,22 @@ export class StudioEngine {
         this.dirLight1.intensity = 1.8;
         this.dirLight2.color.setHex(0xdbeafe);
         this.dirLight2.intensity = 0.8;
-        if (this.skyEngine) this.skyEngine.applyPreset('clear-day');
+        this.applySkyPresetIfEnabled('clear-day');
         break;
       case 'daylight':
-        if (this.skyEngine) this.skyEngine.applyPreset('clear-day');
+        this.applySkyPresetIfEnabled('clear-day');
         break;
       case 'neon':
-        if (this.skyEngine) this.skyEngine.applyPreset('cyberpunk-neon');
+        this.applySkyPresetIfEnabled('cyberpunk-neon');
         break;
       case 'sunset':
-        if (this.skyEngine) this.skyEngine.applyPreset('sunset-dusk');
+        this.applySkyPresetIfEnabled('sunset-dusk');
         break;
       case 'clay_neutral':
         this.ambientLight.intensity = 1.2;
         this.hemiLight.intensity = 0.85;
         this.dirLight1.intensity = 1.6;
-        if (this.skyEngine) this.skyEngine.applyPreset('studio-neutral');
+        this.applySkyPresetIfEnabled('studio-neutral');
         break;
     }
   }
@@ -3751,7 +3970,19 @@ export class StudioEngine {
     this.targetSpherical.radius = 5.2;
   }
 
+  /**
+    * Explicit sky selection from the Skybox panel. This is a deliberate user
+    * action, so it re-enables the dome even on a low-power device.
+    */
   public setSkyPreset(preset: SkyPresetName): void {
+    this.skyEnabled = preset !== 'off';
+    this.skyEngine.applyPreset(preset);
+    this.markDirty();
+  }
+
+  /** Applies a sky preset only when the dome is currently permitted. */
+  private applySkyPresetIfEnabled(preset: string): void {
+    if (!this.skyEngine || !this.skyEnabled) return;
     this.skyEngine.applyPreset(preset);
   }
 
@@ -3905,15 +4136,19 @@ export class StudioEngine {
       this.skyEngine.setLights(this.dirLight1, this.ambientLight, this.dirLight2, this.hemiLight);
     }
 
-    // Ensure environment map exists for MeshStandardMaterial PBR reflections
-    if (!this.scene.environment && this.renderer) {
+    // Ensure environment map exists for MeshStandardMaterial PBR reflections.
+    // Skipped on low-power hardware: the PMREM convolution is a multi-pass GPU job
+    // and the resulting cubemap adds a sampler to every lit fragment.
+    if (!this.scene.environment && this.renderer && this.profile.environmentMap) {
       try {
         const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
         pmremGenerator.compileEquirectangularShader();
         const roomEnv = new RoomEnvironment();
         const envTexture = pmremGenerator.fromScene(roomEnv, 0.04).texture;
         this.scene.environment = envTexture;
+        this.generatedEnvTexture = envTexture;
         pmremGenerator.dispose();
+        roomEnv.dispose?.();
       } catch (e) {
         console.warn('PMREM environment generation notice:', e);
       }
@@ -3971,14 +4206,45 @@ export class StudioEngine {
     return dataUrl;
   }
 
+  /**
+   * Resizes the swapchain and dependent render targets.
+   *
+   * ResizeObserver can fire many times per frame during an orientation change or
+   * on-screen-keyboard animation, and each reallocation of the offscreen targets
+   * is a multi-megabyte GPU allocation. Requests are coalesced into a single
+   * apply on the next animation frame.
+   */
   public resize(width: number, height: number): void {
     if (!width || !height) return;
+    if (this.pendingResize) {
+      this.pendingResize.width = width;
+      this.pendingResize.height = height;
+    } else {
+      this.pendingResize = { width, height };
+    }
+    if (this.resizeRafId !== null) return;
+
+    this.resizeRafId = requestAnimationFrame(() => {
+      this.resizeRafId = null;
+      const pending = this.pendingResize;
+      this.pendingResize = null;
+      if (!pending) return;
+      this.applyResize(pending.width, pending.height);
+    });
+  }
+
+  private applyResize(width: number, height: number): void {
+    if (!width || !height || this.isContextLost) return;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    // Re-clamp the pixel ratio: browser zoom and multi-display moves change DPR.
+    this.renderer.setPixelRatio(resolvePixelRatio(this.profile));
     this.renderer.setSize(width, height);
     if (this.postEngine) {
       this.postEngine.setSize(width, height);
     }
+    this.refreshRect();
+    this.markDirty();
   }
 
   public setPostProcessSettings(settings: Partial<PostProcessSettings>): void {
@@ -4014,8 +4280,9 @@ export class StudioEngine {
 
     this.cameraTarget.lerp(this.targetPosition, 0.15);
 
-    const offset = new THREE.Vector3().setFromSpherical(this.cameraSpherical);
-    this.camera.position.copy(this.cameraTarget).add(offset);
+    // Reused scratch vector: this runs once per frame.
+    _cameraOffset.setFromSpherical(this.cameraSpherical);
+    this.camera.position.copy(this.cameraTarget).add(_cameraOffset);
     this.camera.lookAt(this.cameraTarget);
   }
 
@@ -4031,9 +4298,11 @@ export class StudioEngine {
   private startLoop(): void {
     const loop = (time: number) => {
       this.animationFrameId = requestAnimationFrame(loop);
+      if (this.isContextLost) return;
 
-      // FPS tracking
-      this.frameCount++;
+      // FPS tracking. The counter is advanced where the frame is actually
+      // rendered (below), not here, so the readout reflects drawn frames rather
+      // than rAF callbacks - with frame pacing the two are no longer the same.
       const dt = time - this.lastTime;
       this.fpsTimer += dt;
       if (this.fpsTimer >= 500) {
@@ -4046,14 +4315,33 @@ export class StudioEngine {
       }
       this.lastTime = time;
 
+      // --- Frame pacing -------------------------------------------------
+      // Camera damping settles asymptotically, so also treat "camera still
+      // converging" as activity. Once the scene has been fully static for
+      // idleAfterMs the loop drops to idleFps, which is what keeps a fanless
+      // tablet out of thermal throttling during long idle periods.
+      const cameraSettling = this.isCameraSettling();
+      if (cameraSettling || this.isDirty || this.isDrawing) {
+        this.lastActivityTime = time;
+        this.isDirty = false;
+      }
+      const isIdle =
+        !this.hasAnimatedContent && this.idleFrameIntervalMs > 0 && time - this.lastActivityTime > this.profile.idleAfterMs;
+      const interval = isIdle ? this.idleFrameIntervalMs : this.minFrameIntervalMs;
+      if (interval > 0 && time - this.lastRenderTime < interval - 0.5) {
+        return;
+      }
+      this.lastRenderTime = time;
+      this.frameCount++;
+
       this.updateCameraPosition();
 
       if (this.onCameraChange) {
-        this.onCameraChange({
-          radius: this.cameraSpherical.radius,
-          theta: this.cameraSpherical.theta,
-          phi: this.cameraSpherical.phi,
-        });
+        // Reused payload: the loop must not allocate.
+        this.cameraChangePayload.radius = this.cameraSpherical.radius;
+        this.cameraChangePayload.theta = this.cameraSpherical.theta;
+        this.cameraChangePayload.phi = this.cameraSpherical.phi;
+        this.onCameraChange(this.cameraChangePayload);
       }
 
       // Check for Perfect View changes and notify subscribers
@@ -4063,9 +4351,17 @@ export class StudioEngine {
         pvInfo.view !== this.lastPerfectViewInfo.view ||
         pvInfo.depthAxis !== this.lastPerfectViewInfo.depthAxis
       ) {
-        this.lastPerfectViewInfo = pvInfo;
+        this.lastPerfectViewInfo.isPerfect = pvInfo.isPerfect;
+        this.lastPerfectViewInfo.view = pvInfo.view;
+        this.lastPerfectViewInfo.depthAxis = pvInfo.depthAxis;
         if (this.onViewChange) {
-          this.onViewChange(pvInfo);
+          // Copy on the change edge only: subscribers store this in React state,
+          // which compares by reference and would ignore a mutated scratch object.
+          this.onViewChange({
+            isPerfect: pvInfo.isPerfect,
+            view: pvInfo.view,
+            depthAxis: pvInfo.depthAxis,
+          });
         }
       }
 
@@ -4097,8 +4393,37 @@ export class StudioEngine {
     this.animationFrameId = requestAnimationFrame(loop);
   }
 
+  /**
+   * True while the damped camera has not yet converged on its target pose.
+   * Used by the frame pacer so easing motion is never throttled mid-flight.
+   */
+  private isCameraSettling(): boolean {
+    const EPS_ANGLE = 0.0004;
+    const EPS_DIST = 0.0008;
+    return (
+      Math.abs(this.targetSpherical.theta - this.cameraSpherical.theta) > EPS_ANGLE ||
+      Math.abs(this.targetSpherical.phi - this.cameraSpherical.phi) > EPS_ANGLE ||
+      Math.abs(this.targetSpherical.radius - this.cameraSpherical.radius) > EPS_DIST ||
+      this.cameraTarget.distanceToSquared(this.targetPosition) > EPS_DIST * EPS_DIST
+    );
+  }
+
+  /**
+   * Declares that the scene contains continuously animating content (animated
+   * shaders, procedural sky motion). While true the idle pacer stays disengaged.
+   */
+  public setHasAnimatedContent(active: boolean): void {
+    this.hasAnimatedContent = active;
+    this.markDirty();
+  }
+
   public markDirty(): void {
     this.isDirty = true;
+  }
+
+  /** The active adaptive quality profile. */
+  public getQualityProfile(): QualityProfile {
+    return this.profile;
   }
 
   /**
@@ -4546,18 +4871,126 @@ export class StudioEngine {
     this.modelRoot.position.y = elevation;
   }
 
+  /**
+   * Full teardown. Releases every GPU resource, listener and global this engine
+   * installed so a remount (or a React StrictMode double-mount in development)
+   * cannot leak a WebGL context, render targets or scene graph memory.
+   */
   public dispose(): void {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
     }
-    if (this.postEngine) {
-      this.postEngine.dispose();
+    if (this.resizeRafId !== null) {
+      cancelAnimationFrame(this.resizeRafId);
+      this.resizeRafId = null;
     }
+
+    // 1. Listeners
+    window.removeEventListener('resize', this.handleWindowResize);
+    window.removeEventListener('scroll', this.handleWindowScroll, true);
+    if (this.renderer.domElement) {
+      this.renderer.domElement.removeEventListener('webglcontextlost', this.handleContextLost);
+      this.renderer.domElement.removeEventListener('webglcontextrestored', this.handleContextRestored);
+    }
+
+    // 2. Callbacks - drop React references so a stale engine cannot call setState.
+    this.onFpsUpdate = undefined;
+    this.onMetadataUpdate = undefined;
+    this.onHistoryChange = undefined;
+    this.onViewChange = undefined;
+    this.onGPUInfoUpdate = undefined;
+    this.onCameraChange = undefined;
+    this.onAutoSaveTrigger = undefined;
+    this.onShapeSnapped = undefined;
+    this.onDNAInjected = undefined;
+    this.onModelsChanged = undefined;
+    this.onStrokeSelected = undefined;
+    this.onProjectionChange = undefined;
+
+    // 3. Sub-engines
+    try { this.postEngine?.dispose(); } catch (_) {}
+    try { this.uvEngine.dispose(); } catch (_) {}
+    try { (this.skyEngine as any)?.dispose?.(); } catch (_) {}
+    try { (this.loftEngine as any)?.dispose?.(); } catch (_) {}
+    try { (this.scaffoldingEngine as any)?.dispose?.(); } catch (_) {}
+    try { this.dracoLoader?.dispose(); } catch (_) {}
+    this.dracoLoader = null;
+
+    // 4. Scene graph geometry, materials and textures
+    this.disposeSceneGraph();
+
+    if (this.generatedEnvTexture) {
+      this.generatedEnvTexture.dispose();
+      this.generatedEnvTexture = null;
+    }
+    this.scene.environment = null;
+
     this.materialCache.clear();
-    this.uvEngine.dispose();
+
+    // 5. Bookkeeping collections
+    this.strokes.clear();
+    this.guideColliderMeshes.clear();
+    this.undoStack.length = 0;
+    this.redoStack.length = 0;
+    this.transformUndoStack.length = 0;
+    this.transformRedoStack.length = 0;
+    this.activePoints.length = 0;
+    this.activeStrokeMeshes.length = 0;
+    this.targetMeshes.length = 0;
+    this.raycastTargetScratch.length = 0;
+    this.intersectScratch.length = 0;
+
+    // 6. Renderer & DOM
     this.renderer.dispose();
-    if (this.container && this.renderer.domElement) {
+    this.renderer.forceContextLoss?.();
+    if (this.container && this.renderer.domElement.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);
     }
+
+    // 7. Globals installed by the constructor. Only reclaim them if this engine
+    // still owns them - during a StrictMode remount a newer engine may already
+    // have taken over, and clearing its bindings would break the live viewport.
+    if (typeof window !== 'undefined' && (window as any).__STUDIO_ENGINE__ === this) {
+      delete (window as any).__STUDIO_ENGINE__;
+      delete window.RayEngine;
+    }
+  }
+
+  /**
+   * Walks the whole scene and releases every geometry, material and texture.
+   * Textures are tracked in a set so shared maps are only disposed once.
+   */
+  private disposeSceneGraph(): void {
+    const seenTextures = new Set<THREE.Texture>();
+
+    const disposeMaterial = (mat: THREE.Material): void => {
+      const anyMat = mat as any;
+      for (const key of Object.keys(anyMat)) {
+        const value = anyMat[key];
+        if (value && (value as THREE.Texture).isTexture && !seenTextures.has(value)) {
+          seenTextures.add(value);
+          try { value.dispose(); } catch (_) {}
+        }
+      }
+      try { mat.dispose(); } catch (_) {}
+    };
+
+    this.scene.traverse((obj) => {
+      const anyObj = obj as any;
+      if (anyObj.geometry) {
+        try { anyObj.geometry.disposeBoundsTree?.(); } catch (_) {}
+        try { anyObj.geometry.dispose(); } catch (_) {}
+      }
+      if (anyObj.material) {
+        if (Array.isArray(anyObj.material)) {
+          anyObj.material.forEach(disposeMaterial);
+        } else {
+          disposeMaterial(anyObj.material);
+        }
+      }
+    });
+
+    this.scene.clear();
   }
 }

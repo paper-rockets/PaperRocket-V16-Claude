@@ -15,10 +15,12 @@ import {
 } from '../../types';
 import { applyElasticResistance, getAngle, normalizeAngleDeg } from '../../utils/mathUtils';
 import { haptics } from '../../utils/haptics';
+import { OuterDegreeIndicatorRing } from './OuterDegreeIndicatorRing';
 
 interface TwoDimensionalDialProps {
   isLocked: boolean;
   accessibilityMode: AccessibilityMode;
+  theme?: 'light' | 'dark';
   onTranslate?: (data: TranslationEventPayload) => void;
   onRotate?: (data: RotationEventPayload) => void;
   onScale?: (data: ScaleEventPayload) => void;
@@ -29,12 +31,14 @@ interface TwoDimensionalDialProps {
 export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
   isLocked,
   accessibilityMode,
+  theme = 'dark',
   onTranslate,
   onRotate,
   onScale,
   onInteractionStart,
   onInteractionEnd,
 }) => {
+  const isLight = theme === 'light';
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Center stick drag state
@@ -433,37 +437,49 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         transition={{ type: 'spring', stiffness: 350, damping: 26 }}
         className="absolute inset-0 rounded-full flex items-center justify-center overflow-hidden"
         style={{
-          background: 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
-          boxShadow:
-            'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
-          border: '1px solid rgba(255,255,255,0.09)',
+          background: isLight
+            ? 'radial-gradient(circle at 50% 38%, #ffffff 0%, #f4f4f7 55%, #e4e4e9 100%)'
+            : 'radial-gradient(circle at 50% 38%, #1c1e26 0%, #121318 55%, #09090c 100%)',
+          boxShadow: isLight
+            ? 'inset 0 6px 16px rgba(0,0,0,0.06), inset 0 -2px 6px rgba(255,255,255,0.9), inset 0 0 24px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.08)'
+            : 'inset 0 10px 24px rgba(0,0,0,0.92), inset 0 -4px 10px rgba(255,255,255,0.06), inset 0 0 35px rgba(0,0,0,0.95), 0 6px 18px rgba(0,0,0,0.65)',
+          border: isLight ? '1px solid rgba(0,0,0,0.08)' : '1px solid rgba(255,255,255,0.09)',
         }}
       >
         {/* Subtle Specular Top Arc Reflection for 3D Beveled Lip */}
         <div
           className="absolute inset-0 rounded-full pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
+            background: isLight
+              ? 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.8), transparent 70%)'
+              : 'radial-gradient(ellipse 75% 25% at 50% 3%, rgba(255,255,255,0.12), transparent 70%)',
           }}
         />
 
         {/* Outer Circular Reference Ring with Recessed Groove Shadow */}
-        <div className="absolute w-[86%] h-[86%] rounded-full border border-dashed border-white/15 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]" />
+        <div className={`absolute w-[86%] h-[86%] rounded-full border border-dashed ${isLight ? 'border-neutral-300 shadow-[inset_0_1px_3px_rgba(0,0,0,0.06)]' : 'border-white/15 shadow-[inset_0_1px_3px_rgba(0,0,0,0.8)]'}`} />
 
         {/* Mid Circular Reference Ring with Rim Highlight */}
-        <div className="absolute w-[62%] h-[62%] rounded-full border border-white/10 shadow-[0_1px_2px_rgba(255,255,255,0.04)]" />
+        <div className={`absolute w-[62%] h-[62%] rounded-full border ${isLight ? 'border-neutral-300/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]' : 'border-white/10 shadow-[0_1px_2px_rgba(255,255,255,0.04)]'}`} />
 
         {/* Inner Boundary Dish Groove */}
-        <div className="absolute w-[44%] h-[44%] rounded-full border border-dashed border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]" />
+        <div className={`absolute w-[44%] h-[44%] rounded-full border border-dashed ${isLight ? 'border-neutral-300 shadow-[inset_0_2px_4px_rgba(0,0,0,0.08)]' : 'border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.9)]'}`} />
 
         {/* Center Crosshair Lines */}
-        <div className="absolute w-full h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent" />
-        <div className="absolute h-full w-[1px] bg-gradient-to-b from-transparent via-white/15 to-transparent" />
+        <div className={`absolute w-full h-[1px] ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-300 to-transparent' : 'bg-gradient-to-r from-transparent via-white/15 to-transparent'}`} />
+        <div className={`absolute h-full w-[1px] ${isLight ? 'bg-gradient-to-b from-transparent via-neutral-300 to-transparent' : 'bg-gradient-to-b from-transparent via-white/15 to-transparent'}`} />
 
         {/* Diagonal Crosshair Guides for 2D View */}
-        <div className="absolute w-full h-[1px] rotate-45 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-        <div className="absolute w-full h-[1px] -rotate-45 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        <div className={`absolute w-full h-[1px] rotate-45 ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-200 to-transparent' : 'bg-gradient-to-r from-transparent via-white/5 to-transparent'}`} />
+        <div className={`absolute w-full h-[1px] -rotate-45 ${isLight ? 'bg-gradient-to-r from-transparent via-neutral-200 to-transparent' : 'bg-gradient-to-r from-transparent via-white/5 to-transparent'}`} />
       </motion.div>
+
+      {/* Fixed Outer Ring Degree Indicators (0, 45, 90, 135, 180, 225, 270, 315 degrees) */}
+      <OuterDegreeIndicatorRing
+        theme={theme}
+        size={230}
+        highlightAngle={activeHandle === 'rotate-2d' ? currentRotationAngle : null}
+      />
 
       {/* Elastic Tether Line while dragging central move stick */}
       {isStickDragging && (
@@ -509,22 +525,46 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         }}
         animate={{
           scale: isStickDragging ? 1.08 : 1,
-          borderColor: isStickDragging ? '#34d399' : 'rgba(255, 255, 255, 0.2)',
+          borderColor: isStickDragging
+            ? '#34d399'
+            : isLight
+            ? 'rgba(0, 0, 0, 0.15)'
+            : 'rgba(255, 255, 255, 0.2)',
           boxShadow: isStickDragging
             ? '0 0 28px rgba(16,185,129,0.45), inset 0 0 10px rgba(16,185,129,0.2)'
+            : isLight
+            ? '0 6px 16px rgba(0,0,0,0.1)'
             : '0 10px 20px rgba(0,0,0,0.4)',
         }}
         transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-        className={`relative z-20 ${centerStickSize} rounded-full bg-gradient-to-b from-[#2a2a2e] to-[#1c1c1f] border-2 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none`}
+        className={`relative z-20 ${centerStickSize} rounded-full ${
+          isLight
+            ? 'bg-gradient-to-b from-[#ffffff] to-[#e4e4e7] border-neutral-300'
+            : 'bg-gradient-to-b from-[#2a2a2e] to-[#1c1c1f] border-white/20'
+        } border-2 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none`}
       >
         {/* Inner Tactile Ring */}
-        <div className="w-[82%] h-[82%] rounded-full bg-[#18181a] border border-white/10 flex flex-col items-center justify-center text-zinc-300">
+        <div
+          className={`w-[82%] h-[82%] rounded-full ${
+            isLight
+              ? 'bg-[#f4f4f6] border-neutral-200 text-neutral-700'
+              : 'bg-[#18181a] border-white/10 text-zinc-300'
+          } border flex flex-col items-center justify-center`}
+        >
           <Move
             className={`w-4 h-4 transition-transform duration-150 ${
-              isStickDragging ? 'text-emerald-400 scale-110' : 'text-zinc-200'
+              isStickDragging
+                ? 'text-emerald-500 scale-110'
+                : isLight
+                ? 'text-neutral-800'
+                : 'text-zinc-200'
             }`}
           />
-          <span className="text-[8.5px] font-bold tracking-wider mt-0.5 text-zinc-400">
+          <span
+            className={`text-[8.5px] font-bold tracking-wider mt-0.5 ${
+              isLight ? 'text-neutral-500' : 'text-zinc-400'
+            }`}
+          >
             MOVE
           </span>
         </div>
@@ -562,7 +602,11 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         transition={{ type: 'spring', stiffness: 450, damping: 20 }}
         className={`absolute z-30 ${handleSize} rounded-full border shadow-md flex items-center justify-center cursor-ns-resize touch-none select-none transition-colors duration-150 ${
           activeHandle === 'scale-y'
-            ? 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            ? isLight
+              ? 'bg-neutral-900 text-white border-neutral-900 shadow-[0_0_16px_rgba(0,0,0,0.3)]'
+              : 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            : isLight
+            ? 'bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-100 hover:border-neutral-400'
             : 'bg-[#242428] text-zinc-200 border-white/25 hover:bg-zinc-700 hover:border-white/50'
         }`}
       >
@@ -601,7 +645,11 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         transition={{ type: 'spring', stiffness: 450, damping: 20 }}
         className={`absolute z-30 ${handleSize} rounded-full border shadow-md flex items-center justify-center cursor-ew-resize touch-none select-none transition-colors duration-150 ${
           activeHandle === 'scale-x'
-            ? 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            ? isLight
+              ? 'bg-neutral-900 text-white border-neutral-900 shadow-[0_0_16px_rgba(0,0,0,0.3)]'
+              : 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            : isLight
+            ? 'bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-100 hover:border-neutral-400'
             : 'bg-[#242428] text-zinc-200 border-white/25 hover:bg-zinc-700 hover:border-white/50'
         }`}
       >
@@ -640,7 +688,11 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
         transition={{ type: 'spring', stiffness: 450, damping: 20 }}
         className={`absolute z-30 ${handleSize} rounded-full border shadow-md flex items-center justify-center cursor-nwse-resize touch-none select-none transition-colors duration-150 ${
           activeHandle === 'scale-uniform'
-            ? 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            ? isLight
+              ? 'bg-neutral-900 text-white border-neutral-900 shadow-[0_0_16px_rgba(0,0,0,0.3)]'
+              : 'bg-white text-zinc-950 border-white shadow-[0_0_16px_rgba(255,255,255,0.7)]'
+            : isLight
+            ? 'bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-100 hover:border-neutral-400'
             : 'bg-[#242428] text-zinc-200 border-white/25 hover:bg-zinc-700 hover:border-white/50'
         }`}
       >
@@ -677,13 +729,21 @@ export const TwoDimensionalDial: React.FC<TwoDimensionalDialProps> = ({
           scale: activeHandle === 'rotate-2d' ? 1.18 : 1,
           boxShadow:
             activeHandle === 'rotate-2d'
-              ? '0 0 20px rgba(255,255,255,0.8), inset 0 0 8px rgba(255,255,255,0.4)'
+              ? isLight
+                ? '0 0 20px rgba(0,0,0,0.3), inset 0 0 8px rgba(0,0,0,0.1)'
+                : '0 0 20px rgba(255,255,255,0.8), inset 0 0 8px rgba(255,255,255,0.4)'
+              : isLight
+              ? '0 4px 10px rgba(0,0,0,0.15)'
               : '0 4px 10px rgba(0,0,0,0.3)',
         }}
         transition={{ type: 'spring', stiffness: 450, damping: 20 }}
-        className={`absolute z-30 ${handleSize} rounded-full bg-white border border-zinc-200 shadow-md flex items-center justify-center text-zinc-950 font-bold cursor-grab active:cursor-grabbing touch-none select-none`}
+        className={`absolute z-30 ${handleSize} rounded-full ${
+          isLight
+            ? 'bg-neutral-900 border-neutral-700 text-white'
+            : 'bg-white border-zinc-200 text-zinc-950'
+        } shadow-md flex items-center justify-center font-bold cursor-grab active:cursor-grabbing touch-none select-none`}
       >
-        <RotateCw className="w-3.5 h-3.5 text-zinc-950 stroke-[2.5]" />
+        <RotateCw className={`w-3.5 h-3.5 ${isLight ? 'text-white' : 'text-zinc-950'} stroke-[2.5]`} />
       </motion.div>
     </div>
   );

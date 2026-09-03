@@ -589,6 +589,7 @@ export interface TransformNavigatorProps {
   engine?: any;
   sensitivity?: number;
   onSensitivityChange?: (s: number) => void;
+  theme?: 'light' | 'dark';
 }
 
 export interface TelemetryLogEntry {

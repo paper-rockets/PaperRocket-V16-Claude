@@ -11,3 +11,4 @@ target/
 dist-apk/
 crates/**/target/
 scripts/
+.claude/

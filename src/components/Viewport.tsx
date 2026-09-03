@@ -144,11 +144,31 @@ export const Viewport: React.FC<ViewportProps> = ({
   const initialPinchDistRef = useRef<number | null>(null);
   const lastTouchMidpointRef = useRef<{ x: number; y: number } | null>(null);
 
+  /**
+   * Reads the first two active touch points into a fixed pair without allocating.
+   * Array.from() on the pointer map ran on every sample of every pinch gesture.
+   */
+  const touchPairScratch = useRef<[{ x: number; y: number }, { x: number; y: number }]>([
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ]);
+
+  const readTouchPair = useCallback((): boolean => {
+    let i = 0;
+    for (const pt of touchPointersRef.current.values()) {
+      touchPairScratch.current[i].x = pt.x;
+      touchPairScratch.current[i].y = pt.y;
+      if (++i === 2) return true;
+    }
+    return false;
+  }, []);
+
   // 3-Finger Gesture Tracking (Touch channel only)
   const threeFingerStartY = useRef<number | null>(null);
   const threeFingerStartX = useRef<number | null>(null);
   const threeFingerStartTime = useRef<number>(0);
   const threeFingerInitialFov = useRef<number>(45);
+  const lastToastFovRef = useRef<number>(-1);
 
   const showGestureToast = (title: string, subtitle?: string) => {
     if (gestureToastTimerRef.current) {
@@ -254,13 +274,57 @@ export const Viewport: React.FC<ViewportProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Convert client pointer coordinate to normalized device coordinates (-1 to 1)
+  /**
+   * Cached viewport rect.
+   *
+   * getBoundingClientRect() forces a synchronous layout. It was previously called
+   * two to three times per pointer-move (coordinate conversion, nav-pod proximity
+   * check, coalesced-event conversion), which on a tablet at stylus sample rates
+   * is thousands of forced layouts per second. The rect only changes on resize,
+   * scroll or orientation change, so it is cached and invalidated on those.
+   */
+  const cachedRectRef = useRef<DOMRect | null>(null);
+
+  const refreshRect = useCallback((): DOMRect | null => {
+    if (!containerRef.current) return null;
+    cachedRectRef.current = containerRef.current.getBoundingClientRect();
+    return cachedRectRef.current;
+  }, []);
+
+  const getRect = useCallback((): DOMRect | null => {
+    return cachedRectRef.current || refreshRect();
+  }, [refreshRect]);
+
+  useEffect(() => {
+    const invalidate = () => {
+      cachedRectRef.current = null;
+    };
+    window.addEventListener('resize', invalidate);
+    window.addEventListener('scroll', invalidate, true);
+    window.addEventListener('orientationchange', invalidate);
+    return () => {
+      window.removeEventListener('resize', invalidate);
+      window.removeEventListener('scroll', invalidate, true);
+      window.removeEventListener('orientationchange', invalidate);
+    };
+  }, []);
+
+  // Reused output for coordinate conversion: this runs on every pointer sample.
+  const normalizedScratch = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Convert client pointer coordinate to normalized device coordinates (-1 to 1).
+  // The returned object is reused - read x/y immediately, do not retain it.
   const getNormalizedCoords = (e: React.PointerEvent<HTMLDivElement> | PointerEvent) => {
-    if (!containerRef.current) return { x: 0, y: 0 };
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-    return { x, y };
+    const out = normalizedScratch.current;
+    const rect = getRect();
+    if (!rect) {
+      out.x = 0;
+      out.y = 0;
+      return out;
+    }
+    out.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    out.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+    return out;
   };
 
   const getFovDescription = (fov: number): string => {
@@ -293,7 +357,8 @@ export const Viewport: React.FC<ViewportProps> = ({
 
       setIsStylusDetected(true);
       onStylusDetected?.(true);
-      lastStylusHoverPos.current = { x: e.clientX, y: e.clientY };
+      lastStylusHoverPos.current.x = e.clientX;
+      lastStylusHoverPos.current.y = e.clientY;
 
       // S-Pen / Stylus Hardware Barrel / Side-Button Event (button 2 or buttons 2 or button 5 or buttons 32)
       const isStylusSideButton =
@@ -312,8 +377,10 @@ export const Viewport: React.FC<ViewportProps> = ({
       isPenDrawingRef.current = true;
       isPointerDown.current = true;
       strokeStartTime.current = performance.now();
-      lastNormalizedPos.current = coords;
-      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+      lastNormalizedPos.current.x = coords.x;
+      lastNormalizedPos.current.y = coords.y;
+      lastPointerPos.current.x = e.clientX;
+      lastPointerPos.current.y = e.clientY;
 
       // Pointer Selection Tool (Stroke Raycast & Selection)
       if (tool === 'pointer' || tool === 'select') {
@@ -438,12 +505,14 @@ export const Viewport: React.FC<ViewportProps> = ({
           isPointerDown.current = false;
           engine.cancelStroke();
         }
-        const pts = Array.from(touchPointersRef.current.values()) as Array<{ x: number; y: number }>;
-        initialPinchDistRef.current = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        lastTouchMidpointRef.current = {
-          x: (pts[0].x + pts[1].x) / 2,
-          y: (pts[0].y + pts[1].y) / 2,
-        };
+        if (readTouchPair()) {
+          const [p0, p1] = touchPairScratch.current;
+          initialPinchDistRef.current = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+          lastTouchMidpointRef.current = {
+            x: (p0.x + p1.x) / 2,
+            y: (p0.y + p1.y) / 2,
+          };
+        }
         setIsOrbiting(false);
         return;
       }
@@ -454,13 +523,16 @@ export const Viewport: React.FC<ViewportProps> = ({
         if (fingerPenMode) {
           isPointerDown.current = true;
           strokeStartTime.current = performance.now();
-          lastNormalizedPos.current = coords;
-          lastPointerPos.current = { x: e.clientX, y: e.clientY };
+          lastNormalizedPos.current.x = coords.x;
+          lastNormalizedPos.current.y = coords.y;
+          lastPointerPos.current.x = e.clientX;
+          lastPointerPos.current.y = e.clientY;
           engine.startStroke(coords.x, coords.y, brushSettings, tool, activeLayer, 1.0, symmetry);
           setIsOrbiting(false);
         } else {
           setIsOrbiting(true);
-          lastPointerPos.current = { x: e.clientX, y: e.clientY };
+          lastPointerPos.current.x = e.clientX;
+          lastPointerPos.current.y = e.clientY;
         }
       }
       return;
@@ -489,14 +561,17 @@ export const Viewport: React.FC<ViewportProps> = ({
 
       if (isCameraAction) {
         setIsOrbiting(true);
-        lastPointerPos.current = { x: e.clientX, y: e.clientY };
+        lastPointerPos.current.x = e.clientX;
+        lastPointerPos.current.y = e.clientY;
         return;
       }
 
       isPointerDown.current = true;
       strokeStartTime.current = performance.now();
-      lastNormalizedPos.current = coords;
-      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+      lastNormalizedPos.current.x = coords.x;
+      lastNormalizedPos.current.y = coords.y;
+      lastPointerPos.current.x = e.clientX;
+      lastPointerPos.current.y = e.clientY;
 
       if (tool === 'pointer' || tool === 'select') {
         const hitStrokeId = engine.raycastStroke(coords.x, coords.y);
@@ -547,12 +622,17 @@ export const Viewport: React.FC<ViewportProps> = ({
     if (!engine) return;
 
     // Auto-reveal camera navigation pod when cursor approaches bottom-right corner
-    if (!isPointerDown.current && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const distFromRight = rect.right - e.clientX;
-      const distFromBottom = rect.bottom - e.clientY;
-      if (distFromRight < 120 && distFromBottom < 220) {
-        showNavPod(3000);
+    if (!isPointerDown.current) {
+      const rect = getRect();
+      if (rect) {
+        const distFromRight = rect.right - e.clientX;
+        const distFromBottom = rect.bottom - e.clientY;
+        // Only fire when the pod is actually hidden: showNavPod sets React state
+        // and resets a timer, and calling it on every hover sample re-rendered
+        // this component at pointer frequency.
+        if (distFromRight < 120 && distFromBottom < 220 && !isNavPodVisible) {
+          showNavPod(3000);
+        }
       }
     }
 
@@ -563,47 +643,55 @@ export const Viewport: React.FC<ViewportProps> = ({
       lastPenEventTimeRef.current = Date.now();
       penActiveRef.current = true;
       penInProximityRef.current = true;
-      setIsOrbiting(false); // Hard lock: Stylus can never orbit
-      lastStylusHoverPos.current = { x: e.clientX, y: e.clientY };
+      // Hard lock: stylus can never orbit. Guarded so a hover sweep does not
+      // dispatch a state update on every one of its samples.
+      if (isOrbiting) setIsOrbiting(false);
+      lastStylusHoverPos.current.x = e.clientX;
+      lastStylusHoverPos.current.y = e.clientY;
 
       const coords = getNormalizedCoords(e);
 
       if (isPenDrawingRef.current && isPointerDown.current) {
-        // Coalesced Hardware Sampling for Sub-Pixel Precision
-        const coalescedEvents: Array<{ cx: number; cy: number; pressure: number }> = [];
-        const native = e.nativeEvent as any;
-        if (native && typeof native.getCoalescedEvents === 'function' && containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
-          const cEvents = native.getCoalescedEvents();
-          if (cEvents && cEvents.length > 0) {
-            for (let i = 0; i < cEvents.length; i++) {
-              const ev = cEvents[i];
-              coalescedEvents.push({
-                cx: ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-                cy: -(((ev.clientY - rect.top) / rect.height) * 2 - 1),
-                pressure: ev.pressure > 0 ? ev.pressure : e.pressure > 0 ? e.pressure : 1.0,
-              });
-            }
-          }
-        }
-
         if (tool === 'liquify') {
           const deltaScreenX = coords.x - lastNormalizedPos.current.x;
           const deltaScreenY = coords.y - lastNormalizedPos.current.y;
           if (liquifySettings && (Math.abs(deltaScreenX) > 0.0001 || Math.abs(deltaScreenY) > 0.0001)) {
             engine.applyLiquifyAtScreen(coords.x, coords.y, deltaScreenX, deltaScreenY, liquifySettings);
           }
-        } else if (coalescedEvents.length > 0) {
-          for (const ev of coalescedEvents) {
-            engine.addStrokePoint(ev.cx, ev.cy, brushSettings, tool, ev.pressure, symmetry);
-          }
         } else {
-          const pressure = e.pressure > 0 ? e.pressure : 1.0;
-          engine.addStrokePoint(coords.x, coords.y, brushSettings, tool, pressure, symmetry);
+          // Coalesced Hardware Sampling for Sub-Pixel Precision.
+          // Fed straight to the engine rather than buffered into an intermediate
+          // array of objects - a 4096-level S-Pen delivers several coalesced
+          // samples per move event, so that buffer was pure garbage per stroke.
+          const native = e.nativeEvent as any;
+          const rect = getRect();
+          let consumedCoalesced = false;
+
+          if (native && typeof native.getCoalescedEvents === 'function' && rect) {
+            const cEvents = native.getCoalescedEvents();
+            if (cEvents && cEvents.length > 0) {
+              const fallbackPressure = e.pressure > 0 ? e.pressure : 1.0;
+              for (let i = 0; i < cEvents.length; i++) {
+                const ev = cEvents[i];
+                const cx = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+                const cy = -(((ev.clientY - rect.top) / rect.height) * 2 - 1);
+                const pressure = ev.pressure > 0 ? ev.pressure : fallbackPressure;
+                engine.addStrokePoint(cx, cy, brushSettings, tool, pressure, symmetry);
+              }
+              consumedCoalesced = true;
+            }
+          }
+
+          if (!consumedCoalesced) {
+            const pressure = e.pressure > 0 ? e.pressure : 1.0;
+            engine.addStrokePoint(coords.x, coords.y, brushSettings, tool, pressure, symmetry);
+          }
         }
 
-        lastNormalizedPos.current = coords;
-        lastPointerPos.current = { x: e.clientX, y: e.clientY };
+        lastNormalizedPos.current.x = coords.x;
+        lastNormalizedPos.current.y = coords.y;
+        lastPointerPos.current.x = e.clientX;
+        lastPointerPos.current.y = e.clientY;
       } else {
         // Stylus Hover Decal Tracking
         engine.updateCursor(coords.x, coords.y, brushSettings.size, brushSettings, tool);
@@ -640,15 +728,22 @@ export const Viewport: React.FC<ViewportProps> = ({
           Math.max(15, Math.min(95, threeFingerInitialFov.current + deltaY * 0.22))
         );
         engine.setFov(newFov);
-        showGestureToast(`Camera FOV: ${newFov}°`, getFovDescription(newFov));
+        // Only re-render the toast when the displayed integer actually changes;
+        // a slow drag otherwise fires a state update per touch sample.
+        if (newFov !== lastToastFovRef.current) {
+          lastToastFovRef.current = newFov;
+          showGestureToast(`Camera FOV: ${newFov}°`, getFovDescription(newFov));
+        }
         return;
       }
 
       // 2-Finger Multi-Touch: Pinch-Zoom & Pan
       if (touchCount === 2) {
-        const pts = Array.from(touchPointersRef.current.values()) as Array<{ x: number; y: number }>;
-        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        if (!readTouchPair()) return;
+        const [p0, p1] = touchPairScratch.current;
+        const dist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+        const midX = (p0.x + p1.x) / 2;
+        const midY = (p0.y + p1.y) / 2;
 
         if (initialPinchDistRef.current !== null) {
           const deltaDist = initialPinchDistRef.current - dist;
@@ -656,12 +751,14 @@ export const Viewport: React.FC<ViewportProps> = ({
         }
         initialPinchDistRef.current = dist;
 
-        if (lastTouchMidpointRef.current) {
-          const deltaX = mid.x - lastTouchMidpointRef.current.x;
-          const deltaY = mid.y - lastTouchMidpointRef.current.y;
-          engine.pan(deltaX * 1.2, deltaY * 1.2);
+        const lastMid = lastTouchMidpointRef.current;
+        if (lastMid) {
+          engine.pan((midX - lastMid.x) * 1.2, (midY - lastMid.y) * 1.2);
+          lastMid.x = midX;
+          lastMid.y = midY;
+        } else {
+          lastTouchMidpointRef.current = { x: midX, y: midY };
         }
-        lastTouchMidpointRef.current = mid;
         return;
       }
 
@@ -670,8 +767,10 @@ export const Viewport: React.FC<ViewportProps> = ({
         const coords = getNormalizedCoords(e);
         if (fingerPenMode && isPointerDown.current) {
           engine.addStrokePoint(coords.x, coords.y, brushSettings, tool, 1.0, symmetry);
-          lastNormalizedPos.current = coords;
-          lastPointerPos.current = { x: e.clientX, y: e.clientY };
+          lastNormalizedPos.current.x = coords.x;
+          lastNormalizedPos.current.y = coords.y;
+          lastPointerPos.current.x = e.clientX;
+          lastPointerPos.current.y = e.clientY;
         } else if (isOrbiting) {
           const deltaX = e.clientX - lastPointerPos.current.x;
           const deltaY = e.clientY - lastPointerPos.current.y;
@@ -680,7 +779,8 @@ export const Viewport: React.FC<ViewportProps> = ({
           } else {
             engine.orbit(deltaX * 1.2, deltaY * 1.2);
           }
-          lastPointerPos.current = { x: e.clientX, y: e.clientY };
+          lastPointerPos.current.x = e.clientX;
+          lastPointerPos.current.y = e.clientY;
         }
       }
       return;
@@ -705,7 +805,8 @@ export const Viewport: React.FC<ViewportProps> = ({
           engine.orbit(deltaX * 1.2, deltaY * 1.2);
         }
 
-        lastPointerPos.current = { x: e.clientX, y: e.clientY };
+        lastPointerPos.current.x = e.clientX;
+        lastPointerPos.current.y = e.clientY;
         return;
       }
 
@@ -719,8 +820,10 @@ export const Viewport: React.FC<ViewportProps> = ({
         } else {
           engine.addStrokePoint(coords.x, coords.y, brushSettings, tool, 1.0, symmetry);
         }
-        lastNormalizedPos.current = coords;
-        lastPointerPos.current = { x: e.clientX, y: e.clientY };
+        lastNormalizedPos.current.x = coords.x;
+        lastNormalizedPos.current.y = coords.y;
+        lastPointerPos.current.x = e.clientX;
+        lastPointerPos.current.y = e.clientY;
       } else {
         engine.updateCursor(coords.x, coords.y, brushSettings.size, brushSettings, tool);
       }
@@ -795,7 +898,8 @@ export const Viewport: React.FC<ViewportProps> = ({
       } else if (touchPointersRef.current.size === 1) {
         const remaining = Array.from(touchPointersRef.current.values())[0] as { x: number; y: number } | undefined;
         if (remaining) {
-          lastPointerPos.current = { x: remaining.x, y: remaining.y };
+          lastPointerPos.current.x = remaining.x;
+          lastPointerPos.current.y = remaining.y;
         }
         initialPinchDistRef.current = null;
       }

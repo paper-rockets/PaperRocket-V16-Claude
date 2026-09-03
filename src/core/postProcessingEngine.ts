@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PostProcessSettings } from '../types';
 import { OKLAB_FULL_PIPELINE_GLSL } from './colorMath';
 import { WBOITPipeline } from './wboitPipeline';
+import { getQualityProfile, QualityProfile } from '../utils/deviceProfile';
 
 /**
  * Post-Processing & Render Modifiers Engine
@@ -71,14 +72,21 @@ export class PostProcessingEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
 
-  // Render targets for multi-pass compositing
-  private renderTargetA: THREE.WebGLRenderTarget;
-  private bloomTargetDown: THREE.WebGLRenderTarget;
-  private bloomTargetH: THREE.WebGLRenderTarget;
-  private bloomTargetV: THREE.WebGLRenderTarget;
+  // Render targets for multi-pass compositing.
+  // Allocated lazily: in draft mode (the default, and the only mode on low-power
+  // hardware) nothing here is needed, and at DPR 2 on a 1200x2000 panel a single
+  // full-resolution HalfFloat target is ~77 MB of VRAM.
+  private renderTargetA: THREE.WebGLRenderTarget | null = null;
+  private bloomTargetDown: THREE.WebGLRenderTarget | null = null;
+  private bloomTargetH: THREE.WebGLRenderTarget | null = null;
+  private bloomTargetV: THREE.WebGLRenderTarget | null = null;
 
-  // WBOIT Transparency Pipeline
-  public wboit: WBOITPipeline;
+  // WBOIT Transparency Pipeline (also lazily created).
+  private wboitPipeline: WBOITPipeline | null = null;
+
+  private profile: QualityProfile;
+  private width: number;
+  private height: number;
 
   // Fullscreen Quad & Cameras
   private quadScene: THREE.Scene;
@@ -118,38 +126,12 @@ export class PostProcessingEngine {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
+    this.profile = getQualityProfile();
+    this.width = width;
+    this.height = height;
 
-    const pr = renderer.getPixelRatio();
-    const w = Math.max(1, Math.floor(width * pr));
-    const h = Math.max(1, Math.floor(height * pr));
-    const bw = Math.max(1, Math.floor(w / 4));
-    const bh = Math.max(1, Math.floor(h / 4));
-
-    const options: THREE.RenderTargetOptions = {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-      type: THREE.HalfFloatType,
-      stencilBuffer: true,
-      depthBuffer: true,
-      colorSpace: THREE.SRGBColorSpace,
-    };
-
-    const bloomOptions: THREE.RenderTargetOptions = {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-      type: THREE.HalfFloatType,
-      stencilBuffer: false,
-      depthBuffer: false,
-    };
-
-    this.renderTargetA = new THREE.WebGLRenderTarget(w, h, options);
-    this.bloomTargetDown = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
-    this.bloomTargetH = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
-    this.bloomTargetV = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
-
-    this.wboit = new WBOITPipeline(renderer, width, height);
+    const bw = this.bloomWidth();
+    const bh = this.bloomHeight();
 
     this.quadScene = new THREE.Scene();
     this.quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -195,7 +177,7 @@ export class PostProcessingEngine {
       uniforms: {
         tDiffuse: { value: null },
         tBloom: { value: null },
-        uResolution: { value: new THREE.Vector2(w, h) },
+        uResolution: { value: new THREE.Vector2(this.targetWidth(), this.targetHeight()) },
         uTime: { value: 0.0 },
         uRenderMode: { value: 0 },
         uToonShading: { value: false },
@@ -303,18 +285,108 @@ export class PostProcessingEngine {
     this.quadScene.add(this.quadMesh);
   }
 
-  public setSize(width: number, height: number): void {
-    const pr = this.renderer.getPixelRatio();
-    const w = Math.max(1, Math.floor(width * pr));
-    const h = Math.max(1, Math.floor(height * pr));
-    const bw = Math.max(1, Math.floor(w / 4));
-    const bh = Math.max(1, Math.floor(h / 4));
+  // --- Target sizing helpers -------------------------------------------
+  private targetWidth(): number {
+    return Math.max(1, Math.floor(this.width * this.renderer.getPixelRatio()));
+  }
 
-    this.renderTargetA.setSize(w, h);
-    this.bloomTargetDown.setSize(bw, bh);
-    this.bloomTargetH.setSize(bw, bh);
-    this.bloomTargetV.setSize(bw, bh);
-    this.wboit.setSize(width, height);
+  private targetHeight(): number {
+    return Math.max(1, Math.floor(this.height * this.renderer.getPixelRatio()));
+  }
+
+  private bloomWidth(): number {
+    return Math.max(1, Math.floor(this.targetWidth() / this.profile.bloomDivisor));
+  }
+
+  private bloomHeight(): number {
+    return Math.max(1, Math.floor(this.targetHeight() / this.profile.bloomDivisor));
+  }
+
+  /**
+   * Allocates the offscreen targets on first use.
+   *
+   * Nothing here is touched in draft mode, so a device that never leaves draft
+   * (every low-power device, and most sessions on any device) never pays the
+   * VRAM cost at all. HalfFloat is downgraded to UnsignedByte where the profile
+   * asks for it, halving the bandwidth of every full-screen read and write.
+   */
+  private ensureTargets(): boolean {
+    if (this.renderTargetA) return true;
+
+    const w = this.targetWidth();
+    const h = this.targetHeight();
+    const bw = this.bloomWidth();
+    const bh = this.bloomHeight();
+    const hdrType = this.profile.halfFloatTargets ? THREE.HalfFloatType : THREE.UnsignedByteType;
+
+    this.renderTargetA = new THREE.WebGLRenderTarget(w, h, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: hdrType,
+      stencilBuffer: true,
+      depthBuffer: true,
+      colorSpace: THREE.SRGBColorSpace,
+    });
+
+    const bloomOptions: THREE.RenderTargetOptions = {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: hdrType,
+      stencilBuffer: false,
+      depthBuffer: false,
+    };
+
+    this.bloomTargetDown = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+    this.bloomTargetH = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+    this.bloomTargetV = new THREE.WebGLRenderTarget(bw, bh, bloomOptions);
+
+    this.blurHMaterial.uniforms.uDirection.value.set(1.0 / bw, 0.0);
+    this.blurVMaterial.uniforms.uDirection.value.set(0.0, 1.0 / bh);
+    this.postMaterial.uniforms.uResolution.value.set(w, h);
+
+    return true;
+  }
+
+  /**
+   * Weighted-blended OIT pipeline. Created on first access only - it owns three
+   * more full-resolution targets and is not part of the default draft path.
+   */
+  public get wboit(): WBOITPipeline | null {
+    if (!this.wboitPipeline && this.profile.wboit) {
+      this.wboitPipeline = new WBOITPipeline(this.renderer, this.width, this.height);
+    }
+    return this.wboitPipeline;
+  }
+
+  /** Releases the offscreen targets without tearing down the engine. */
+  private releaseTargets(): void {
+    this.renderTargetA?.dispose();
+    this.bloomTargetDown?.dispose();
+    this.bloomTargetH?.dispose();
+    this.bloomTargetV?.dispose();
+    this.renderTargetA = null;
+    this.bloomTargetDown = null;
+    this.bloomTargetH = null;
+    this.bloomTargetV = null;
+  }
+
+  public setSize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+
+    const w = this.targetWidth();
+    const h = this.targetHeight();
+    const bw = this.bloomWidth();
+    const bh = this.bloomHeight();
+
+    // Only resize what actually exists; allocation still happens on demand.
+    this.renderTargetA?.setSize(w, h);
+    this.bloomTargetDown?.setSize(bw, bh);
+    this.bloomTargetH?.setSize(bw, bh);
+    this.bloomTargetV?.setSize(bw, bh);
+    this.wboitPipeline?.setSize(width, height);
 
     this.blurHMaterial.uniforms.uDirection.value.set(1.0 / bw, 0.0);
     this.blurVMaterial.uniforms.uDirection.value.set(0.0, 1.0 / bh);
@@ -322,7 +394,20 @@ export class PostProcessingEngine {
   }
 
   public updateSettings(newSettings: Partial<PostProcessSettings>): void {
+    const wasRenderMode = this.settings.renderMode === 'render';
     this.settings = { ...this.settings, ...newSettings };
+
+    // Low-power hardware stays in draft: the compositor's full-screen passes are
+    // pure fill-rate on a GPU that is already the bottleneck.
+    if (!this.profile.postProcessing) {
+      this.settings.renderMode = 'draft';
+    }
+
+    // Leaving render mode frees several megabytes of VRAM immediately rather than
+    // holding the targets for a mode the user may never return to.
+    if (wasRenderMode && this.settings.renderMode !== 'render') {
+      this.releaseTargets();
+    }
 
     const u = this.postMaterial.uniforms;
     u.uRenderMode.value = this.settings.renderMode === 'render' ? 1 : 0;
@@ -357,41 +442,59 @@ export class PostProcessingEngine {
    *    c. Composites all passes onto the screen quad in a single final shader step.
    */
   public render(time: number = 0): void {
-    if (this.settings.renderMode === 'draft') {
+    // Draft mode (and every low-power session) renders straight to the swapchain:
+    // no offscreen target, no extra full-screen passes, no extra bandwidth.
+    if (this.settings.renderMode === 'draft' || !this.profile.postProcessing) {
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
       return;
     }
 
+    this.ensureTargets();
+
+    const targetA = this.renderTargetA;
+    const down = this.bloomTargetDown;
+    const blurH = this.bloomTargetH;
+    const blurV = this.bloomTargetV;
+
+    if (!targetA) {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    const bloomEnabled = this.settings.bloom && this.profile.bloom && !!down && !!blurH && !!blurV;
+
     // Pass 1: Render 3D scene to full-res target A
-    this.renderer.setRenderTarget(this.renderTargetA);
+    this.renderer.setRenderTarget(targetA);
     this.renderer.render(this.scene, this.camera);
 
-    // Pass 2: Bloom downsample & 2-pass separable blur (1/4 resolution)
-    if (this.settings.bloom) {
+    // Pass 2: Bloom downsample & 2-pass separable blur (downsampled)
+    if (bloomEnabled) {
       // 2a. Bright Pass & Downsample (TargetA -> bloomTargetDown)
       this.quadMesh.material = this.brightPassMaterial;
-      this.brightPassMaterial.uniforms.tDiffuse.value = this.renderTargetA.texture;
-      this.renderer.setRenderTarget(this.bloomTargetDown);
+      this.brightPassMaterial.uniforms.tDiffuse.value = targetA.texture;
+      this.renderer.setRenderTarget(down);
       this.renderer.render(this.quadScene, this.quadCamera);
 
       // 2b. Horizontal Blur (bloomTargetDown -> bloomTargetH)
       this.quadMesh.material = this.blurHMaterial;
-      this.blurHMaterial.uniforms.tInput.value = this.bloomTargetDown.texture;
-      this.renderer.setRenderTarget(this.bloomTargetH);
+      this.blurHMaterial.uniforms.tInput.value = down!.texture;
+      this.renderer.setRenderTarget(blurH);
       this.renderer.render(this.quadScene, this.quadCamera);
 
       // 2c. Vertical Blur (bloomTargetH -> bloomTargetV)
       this.quadMesh.material = this.blurVMaterial;
-      this.blurVMaterial.uniforms.tInput.value = this.bloomTargetH.texture;
-      this.renderer.setRenderTarget(this.bloomTargetV);
+      this.blurVMaterial.uniforms.tInput.value = blurH!.texture;
+      this.renderer.setRenderTarget(blurV);
       this.renderer.render(this.quadScene, this.quadCamera);
     }
 
     // Pass 3: Final Composite to Screen
     this.quadMesh.material = this.postMaterial;
-    this.postMaterial.uniforms.tDiffuse.value = this.renderTargetA.texture;
-    this.postMaterial.uniforms.tBloom.value = this.settings.bloom ? this.bloomTargetV.texture : null;
+    this.postMaterial.uniforms.tDiffuse.value = targetA.texture;
+    this.postMaterial.uniforms.uBloom.value = bloomEnabled;
+    this.postMaterial.uniforms.tBloom.value = bloomEnabled ? blurV!.texture : null;
     this.postMaterial.uniforms.uTime.value = time;
 
     this.renderer.setRenderTarget(null);
@@ -399,15 +502,17 @@ export class PostProcessingEngine {
   }
 
   public dispose(): void {
-    this.renderTargetA.dispose();
-    this.bloomTargetDown.dispose();
-    this.bloomTargetH.dispose();
-    this.bloomTargetV.dispose();
+    this.releaseTargets();
+    // The WBOIT pipeline owns three more full-resolution targets; it was
+    // previously constructed here but never released.
+    this.wboitPipeline?.dispose();
+    this.wboitPipeline = null;
     this.brightPassMaterial.dispose();
     this.blurHMaterial.dispose();
     this.blurVMaterial.dispose();
     this.postMaterial.dispose();
     this.quadMesh.geometry.dispose();
+    this.quadScene.clear();
   }
 }
 
