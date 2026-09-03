@@ -1008,7 +1008,7 @@ export default function App() {
       {uiMode === 'pro' && <FpsCounter uiScale={uiScale} />}
 
       {/* Floating Restore Buttons when Controllers are Hidden */}
-      {activeController === 'hidden' && (
+      {uiMode === 'pro' && activeController === 'hidden' && (
         <div
           style={{
             transform: uiScale !== 1.0 ? `scale(${uiScale})` : undefined,
@@ -1049,7 +1049,7 @@ export default function App() {
       {/* 3D Navigation Controllers: Strictly ONE controller at a time (Never stack both) */}
       {/* Zone C. In Play a raised sheet owns the bottom of the screen, so the
           navigator steps aside rather than fighting it for the same corner. */}
-      {gizmoMode !== 'Hidden' && activeController === 'navigator' && !(uiMode === 'play' && openSheet !== null) && (
+      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'navigator') && !(uiMode === 'play' && openSheet !== null) && (
         <TransformNavigator
           initialMode="2d"
           theme={theme}
@@ -1088,7 +1088,7 @@ export default function App() {
         />
       )}
 
-      {gizmoMode !== 'Hidden' && activeController === 'tactile' && (
+      {uiMode === 'pro' && gizmoMode !== 'Hidden' && activeController === 'tactile' && (
         <PaperRocketTactileWheel
           engine={engine}
           theme={theme}
@@ -1466,7 +1466,7 @@ export default function App() {
       )}
 
       {/* Navigator Sandbox with 6 Interaction Variations */}
-      {showSandbox && (
+      {showSandbox && uiMode === 'pro' && (
         <Suspense fallback={null}>
           <NavigatorSandbox onClose={() => setShowSandbox(false)} />
         </Suspense>
