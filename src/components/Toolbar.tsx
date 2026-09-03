@@ -104,6 +104,7 @@ interface ToolbarProps {
   onRedo: () => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  onSetTheme?: (theme: 'light' | 'dark') => void;
   onSaveProject?: () => void;
   onLoadProject?: (file: File) => void;
   engine?: StudioEngine | null;
@@ -269,6 +270,7 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
   onOpenSandbox,
   theme = 'dark',
   onToggleTheme,
+  onSetTheme,
   onSaveProject,
   onLoadProject,
   onOpenBrushSettings,
@@ -1892,6 +1894,40 @@ export const ToolbarComponent: React.FC<ToolbarProps> = ({
                   </span>
                 </button>
               )}
+
+              {/* Appearance & Theme Selector */}
+              <div className="space-y-1 pt-1 border-t border-zinc-800/80">
+                <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 uppercase">
+                  <span>Theme</span>
+                  <span className="text-[9px] font-mono text-sky-400 capitalize">{theme}</span>
+                </div>
+                <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl border ${theme === 'light' ? 'bg-neutral-100 border-neutral-200' : 'bg-zinc-900 border-zinc-800'}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSetTheme ? onSetTheme('light') : onToggleTheme?.()}
+                    className={`py-1 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                      theme === 'light'
+                        ? 'bg-white text-neutral-900 font-bold shadow-sm border border-neutral-200'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Light</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSetTheme ? onSetTheme('dark') : onToggleTheme?.()}
+                    className={`py-1 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1.5 transition-all ${
+                      theme === 'dark'
+                        ? 'bg-zinc-800 text-white font-bold shadow-sm border border-zinc-700'
+                        : 'text-neutral-500 hover:text-neutral-900'
+                    }`}
+                  >
+                    <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Dark</span>
+                  </button>
+                </div>
+              </div>
 
               {/* 3D Navigator Controller Mode */}
               {onChangeController && (

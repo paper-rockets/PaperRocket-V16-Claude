@@ -165,7 +165,13 @@ const DEFAULT_LAYERS: Layer[] = [
 
 export default function App() {
   const [engine, setEngine] = useState<StudioEngine | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('mody_studio_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch (_) {}
+    return 'dark';
+  });
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -433,7 +439,7 @@ export default function App() {
 
   const handleEngineReady = useCallback((inst: StudioEngine) => {
     setEngine(inst);
-    inst.setTheme('light');
+    inst.setTheme(theme);
     inst.setLightingPreset('studio');
     inst.setupDefaultDrawingPlane();
     inst.setPostProcessSettings(DEFAULT_POST_SETTINGS);
@@ -589,11 +595,22 @@ export default function App() {
     triggerAutoSave('layers');
   }, [layers, triggerAutoSave]);
 
-  // Sync theme to engine
+  // Sync theme to engine & persist
   const handleToggleTheme = () => {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(nextTheme);
+    try {
+      localStorage.setItem('mody_studio_theme', nextTheme);
+    } catch (_) {}
     engine?.setTheme(nextTheme);
+  };
+
+  const handleSetTheme = (newTheme: 'light' | 'dark') => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem('mody_studio_theme', newTheme);
+    } catch (_) {}
+    engine?.setTheme(newTheme);
   };
 
   // Full Project State Save (.remix3d JSON file)
@@ -927,6 +944,7 @@ export default function App() {
         onSaveProject={handleSaveProject}
         onLoadProject={handleLoadProject}
         onToggleTheme={handleToggleTheme}
+        onSetTheme={handleSetTheme}
         onOpenSandbox={() => setShowSandbox(true)}
       />
 

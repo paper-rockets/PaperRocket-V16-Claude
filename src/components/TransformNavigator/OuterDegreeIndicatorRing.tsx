@@ -42,7 +42,7 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
     const cx = 115;
     const cy = 115;
     const rOuter = 111;
-    const rText = 94.5;
+    const rText = 82;
 
     // Step by 5 degrees for a total of 72 divisions
     for (let deg = 0; deg < 360; deg += 5) {
@@ -52,8 +52,8 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
 
       let tickLen = 2.5;
       if (isCardinal) tickLen = 8.5;
-      else if (is45) tickLen = 6.5;
-      else if (is15) tickLen = 4.5;
+      else if (is45) tickLen = 6.0;
+      else if (is15) tickLen = 4.0;
 
       const rInner = rOuter - tickLen;
       // Angle: 0° = top (12 o'clock), 90° = right, 180° = bottom, 270° = left
@@ -117,29 +117,18 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
         cy="115"
         r="111"
         fill="none"
-        stroke={isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.14)'}
+        stroke={isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.16)'}
         strokeWidth="1"
       />
 
-      {/* Mid Subtle Reference Track */}
+      {/* Clean Cardinal Reference Track */}
       <circle
         cx="115"
         cy="115"
-        r="102"
+        r="102.5"
         fill="none"
-        stroke={isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}
+        stroke={isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}
         strokeWidth="0.75"
-        strokeDasharray="2 3"
-      />
-
-      {/* Inner Label Reference Track */}
-      <circle
-        cx="115"
-        cy="115"
-        r="88"
-        fill="none"
-        stroke={isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}
-        strokeWidth="0.5"
       />
 
       {/* Fixed Radial Ticks */}
@@ -151,17 +140,17 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
             highlightAngle !== null &&
             Math.abs(((highlightAngle - m.deg + 540) % 360) - 180) < 3;
 
-          let strokeColor = isLight ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.15)';
+          let strokeColor = isLight ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.2)';
           let strokeW = 0.75;
 
           if (m.isCardinal) {
-            strokeColor = isLight ? 'rgba(24,24,27,0.85)' : 'rgba(255,255,255,0.85)';
+            strokeColor = isLight ? 'rgba(24,24,27,0.9)' : 'rgba(255,255,255,0.9)';
             strokeW = 1.6;
           } else if (m.is45) {
-            strokeColor = isLight ? 'rgba(82,82,91,0.75)' : 'rgba(255,255,255,0.65)';
+            strokeColor = isLight ? 'rgba(70,70,75,0.8)' : 'rgba(255,255,255,0.7)';
             strokeW = 1.3;
           } else if (m.is15) {
-            strokeColor = isLight ? 'rgba(113,113,122,0.45)' : 'rgba(255,255,255,0.35)';
+            strokeColor = isLight ? 'rgba(100,100,105,0.5)' : 'rgba(255,255,255,0.4)';
             strokeW = 1;
           }
 
@@ -194,13 +183,13 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
             highlightAngle !== null &&
             Math.abs(((highlightAngle - m.deg + 540) % 360) - 180) < 3;
 
-          let fill = isLight ? 'rgba(82,82,91,0.85)' : 'rgba(212,212,216,0.75)';
-          let fontSize = '7.5';
+          let fill = isLight ? 'rgba(70,70,75,0.9)' : 'rgba(212,212,216,0.8)';
+          let fontSize = '8.0';
           let fontWeight = '600';
 
           if (m.isCardinal) {
-            fill = isLight ? 'rgba(24,24,27,0.95)' : 'rgba(255,255,255,0.95)';
-            fontSize = '8.5';
+            fill = isLight ? 'rgba(20,20,22,0.98)' : 'rgba(255,255,255,0.98)';
+            fontSize = '9.0';
             fontWeight = '800';
           }
 

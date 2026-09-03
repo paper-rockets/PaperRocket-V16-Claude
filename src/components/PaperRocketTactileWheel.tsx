@@ -1114,7 +1114,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           }}
           className={`relative ${wheelSizeClass} rounded-full ${
             isLight
-              ? 'bg-[#f4f4f7] border-neutral-300 shadow-[0_25px_60px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.8)]'
+              ? 'bg-gradient-to-b from-[#ffffff] to-[#eef0f4] border-neutral-300 shadow-[0_20px_45px_rgba(0,0,0,0.08),inset_0_1px_2px_rgba(255,255,255,0.95)]'
               : 'bg-[#18181b]/95 border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)]'
           } backdrop-blur-2xl border flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
         >
@@ -1152,46 +1152,11 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
               title={`Drag ring around center to rotate model (${rotationAxis.toUpperCase()}-Axis: ${rotationAxis === 'y' ? 'Turntable / Yaw' : rotationAxis === 'x' ? 'Pitch / Tilt' : 'Roll / Screen'})`}
               aria-label={`Rotation ring - drag to rotate model around ${rotationAxis.toUpperCase()}-axis`}
             >
-              {/* Radial tick marks around rotation ring */}
+              {/* Rotating Pip Indicator */}
               <div
                 className="absolute inset-0 rounded-full flex items-center justify-center transition-transform duration-75 pointer-events-none"
                 style={{ transform: `rotate(${rotateRingAngle}deg)` }}
               >
-                {Array.from({ length: 24 }).map((_, i) => {
-                  const deg = (i / 24) * 360;
-                  const isCardinal = deg % 90 === 0;
-                  const is45 = deg % 45 === 0;
-                  const tickOffset = isBiggerUI ? 96 : 88;
-                  const isNearAngle = Math.abs(((rotateRingAngle - deg + 180) % 360) - 180) < 4;
-                  const isMilestoneSnapped = snappedMilestone === deg;
-
-                  return (
-                    <div
-                      key={i}
-                      className={`absolute rounded-full transition-all duration-75 ${
-                        isCardinal
-                          ? isMilestoneSnapped
-                            ? 'w-1 h-4 bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.9)] z-30'
-                            : isNearAngle || isRotateRingDragging
-                            ? 'w-1 h-3.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] z-20'
-                            : 'w-1 h-3 bg-white/70 shadow-[0_0_4px_rgba(255,255,255,0.3)]'
-                          : is45
-                          ? isMilestoneSnapped
-                            ? 'w-0.5 h-3.5 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)] z-30'
-                            : isNearAngle || isRotateRingDragging
-                            ? 'w-0.5 h-3 bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)] z-20'
-                            : 'w-0.5 h-2.5 bg-white/50'
-                          : isRotateRingDragging
-                          ? 'w-0.5 h-1.5 bg-white/40'
-                          : 'w-0.5 h-1.5 bg-white/15'
-                      }`}
-                      style={{
-                        transform: `rotate(${deg}deg) translateY(-${tickOffset}px)`,
-                      }}
-                    />
-                  );
-                })}
-
                 {/* Dedicated Rotation Handle Grip Pip with Rotate Icon & Snap Highlight */}
                 <div
                   id="paper-rocket-rotation-handle"
@@ -1199,10 +1164,16 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                     isBiggerUI ? 'w-6 h-6' : 'w-5 h-5'
                   } rounded-full border shadow-md flex items-center justify-center transition-all ${
                     snappedMilestone !== null
-                      ? 'bg-emerald-400 text-zinc-950 border-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.9)] scale-115'
+                      ? isLight
+                        ? 'bg-emerald-500 text-white border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.7)] scale-110'
+                        : 'bg-emerald-400 text-zinc-950 border-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.9)] scale-110'
                       : isRotateRingDragging
-                      ? 'bg-white text-zinc-950 border-white shadow-[0_0_14px_rgba(255,255,255,0.8)] scale-110'
-                      : 'bg-[#27272a] text-zinc-300 border-white/20 hover:bg-[#3f3f46] hover:text-white hover:scale-105'
+                      ? isLight
+                        ? 'bg-white text-neutral-900 border-neutral-400 shadow-[0_0_12px_rgba(0,0,0,0.18)] scale-105'
+                        : 'bg-white text-zinc-950 border-white shadow-[0_0_14px_rgba(255,255,255,0.8)] scale-105'
+                      : isLight
+                      ? 'bg-white text-neutral-700 border-neutral-300 shadow-sm hover:bg-neutral-100 hover:text-neutral-950'
+                      : 'bg-[#27272a] text-zinc-300 border-white/20 hover:bg-[#3f3f46] hover:text-white'
                   }`}
                   title={`${rotationAxis.toUpperCase()}-Axis Rotation Handle - Drag around dial to rotate model`}
                 >
@@ -1212,9 +1183,13 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
               {/* Recessed Ring Track Border */}
               <div
-                className={`absolute inset-0 rounded-full border border-dashed transition-colors pointer-events-none ${
+                className={`absolute inset-0 rounded-full border transition-colors pointer-events-none ${
                   isRotateRingDragging
-                    ? 'border-white/40 shadow-[inset_0_0_12px_rgba(255,255,255,0.15)]'
+                    ? isLight
+                      ? 'border-emerald-500/40 shadow-[inset_0_0_8px_rgba(16,185,129,0.15)]'
+                      : 'border-white/40 shadow-[inset_0_0_12px_rgba(255,255,255,0.15)]'
+                    : isLight
+                    ? 'border-neutral-300/60'
                     : 'border-white/10'
                 }`}
               />
@@ -1231,7 +1206,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
               } rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing z-20`}
             >
-            {/* 4 Directional Symmetrical Grey Petals */}
+            {/* 4 Directional Symmetrical Tactile Petals */}
             <div
               className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 ${
                 isDraggingJoystick ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
@@ -1243,9 +1218,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 onPointerDown={(e) => handleJoystickDown(e, 'y')}
                 className={`absolute ${
                   isBiggerUI ? '-top-1.5 w-6 h-10' : '-top-1 w-5 h-8'
-                } rounded-full bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 hover:border-white/20 transition-all shadow-md cursor-pointer`}
+                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                  isLight
+                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
+                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
+                }`}
                 title="Move +Y (Elevation)"
-              />
+              >
+                <div className={`w-1 h-2 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
+              </button>
 
               {/* Bottom Petal (Depth Z) */}
               <button
@@ -1253,9 +1234,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 onPointerDown={(e) => handleJoystickDown(e, 'z')}
                 className={`absolute ${
                   isBiggerUI ? '-bottom-1.5 w-6 h-10' : '-bottom-1 w-5 h-8'
-                } rounded-full bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 hover:border-white/20 transition-all shadow-md cursor-pointer`}
+                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                  isLight
+                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
+                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
+                }`}
                 title="Move Z (Depth)"
-              />
+              >
+                <div className={`w-1 h-2 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
+              </button>
 
               {/* Left Petal (Lateral -X) */}
               <button
@@ -1263,9 +1250,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 onPointerDown={(e) => handleJoystickDown(e, 'x')}
                 className={`absolute ${
                   isBiggerUI ? '-left-1.5 w-10 h-6' : '-left-1 w-8 h-5'
-                } rounded-full bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 hover:border-white/20 transition-all shadow-md cursor-pointer`}
+                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                  isLight
+                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
+                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
+                }`}
                 title="Move -X (Lateral)"
-              />
+              >
+                <div className={`w-2 h-1 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
+              </button>
 
               {/* Right Petal (Lateral +X) */}
               <button
@@ -1273,12 +1266,18 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 onPointerDown={(e) => handleJoystickDown(e, 'x')}
                 className={`absolute ${
                   isBiggerUI ? '-right-1.5 w-10 h-6' : '-right-1 w-8 h-5'
-                } rounded-full bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 hover:border-white/20 transition-all shadow-md cursor-pointer`}
+                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                  isLight
+                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
+                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
+                }`}
                 title="Move +X (Lateral)"
-              />
+              >
+                <div className={`w-2 h-1 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
+              </button>
             </div>
 
-            {/* Sleek Monochrome Center Puck with Dark Metallic Gradient & Concentric Rings */}
+            {/* Sleek Tactile Center Puck */}
             <motion.div
               id="paper-rocket-center-white-puck"
               style={{
@@ -1288,17 +1287,35 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
               animate={{
                 scale: isDraggingJoystick ? 1.08 : 1,
                 boxShadow: isDraggingJoystick
-                  ? '0 0 25px rgba(255, 255, 255, 0.25), 0 12px 28px rgba(0,0,0,0.8)'
+                  ? isLight
+                    ? '0 0 20px rgba(16,185,129,0.35), 0 8px 18px rgba(0,0,0,0.12)'
+                    : '0 0 25px rgba(255, 255, 255, 0.25), 0 12px 28px rgba(0,0,0,0.8)'
+                  : isLight
+                  ? '0 4px 14px rgba(0,0,0,0.1), inset 0 1px 1px rgba(255,255,255,0.9), inset 0 -1px 2px rgba(0,0,0,0.06)'
                   : '0 8px 20px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5)',
               }}
               className={`relative z-20 ${
                 isBiggerUI ? 'w-16 h-16 min-w-[48px] min-h-[48px]' : 'w-12 h-12 min-w-[40px] min-h-[40px]'
-              } rounded-full bg-gradient-to-b from-[#3f3f46] via-[#27272a] to-[#18181b] border border-white/20 text-white font-bold flex items-center justify-center shadow-2xl cursor-grab active:cursor-grabbing select-none`}
+              } rounded-full ${
+                isLight
+                  ? 'bg-gradient-to-b from-white via-[#f0f0f3] to-[#e4e4e8] border-neutral-300 text-neutral-800'
+                  : 'bg-gradient-to-b from-[#3f3f46] via-[#27272a] to-[#18181b] border-white/20 text-white'
+              } border font-bold flex items-center justify-center shadow-lg cursor-grab active:cursor-grabbing select-none`}
             >
               {/* Concentric Tactile Depression Rings */}
-              <div className="w-[72%] h-[72%] rounded-full bg-[#18181b] border border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] flex items-center justify-center">
-                <div className="w-[50%] h-[50%] rounded-full bg-[#27272a] border border-white/10 flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 shadow-sm" />
+              <div
+                className={`w-[72%] h-[72%] rounded-full ${
+                  isLight
+                    ? 'bg-[#e8e8ed] border-neutral-200 shadow-[inset_0_1px_3px_rgba(0,0,0,0.06)]'
+                    : 'bg-[#18181b] border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]'
+                } border flex items-center justify-center`}
+              >
+                <div
+                  className={`w-[50%] h-[50%] rounded-full ${
+                    isLight ? 'bg-white border-neutral-300/70' : 'bg-[#27272a] border-white/10'
+                  } border flex items-center justify-center`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-400'} shadow-sm`} />
                 </div>
               </div>
             </motion.div>
