@@ -9,6 +9,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import * as WebGLTextureUtils from 'three/examples/jsm/utils/WebGLTextureUtils.js';
 import JSZip from 'jszip';
 import {
   ConversionResult,
@@ -682,6 +683,11 @@ export class ModelConverterEngine {
       return { blob: res.blob, arrayBuffer };
     } catch {
       const exporter = new GLTFExporter();
+      // Same reason as ModelExporterService: without this, compressed textures
+      // abort the export and the save looks like a no-op.
+      try {
+        (exporter as any).setTextureUtils?.(WebGLTextureUtils);
+      } catch {}
       const options: any = {
         binary: true,
         onlyVisible: true,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import * as WebGLTextureUtils from 'three/examples/jsm/utils/WebGLTextureUtils.js';
 import { DRACOExporter } from 'three/examples/jsm/exporters/DRACOExporter.js';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
@@ -73,8 +74,25 @@ export class ModelExporterService {
   private objExporter: OBJExporter;
   private stlExporter: STLExporter;
 
+
+/**
+ * Compressed-texture support for export.
+ *
+ * A GLB with KTX2/BasisU textures loads fine but cannot be re-exported:
+ * GLTFExporter throws "setTextureUtils() must be called to process compressed
+ * textures". In the converter that meant a model imported, previewed correctly,
+ * and then silently failed to save — "Save In-App" appeared to do nothing and
+ * storage stayed empty.
+ *
+ * WebGLTextureUtils.decompress ships inside the three package we already use.
+ */
   constructor() {
     this.gltfExporter = new GLTFExporter();
+    try {
+      (this.gltfExporter as any).setTextureUtils?.(WebGLTextureUtils);
+    } catch (err) {
+      console.warn('[ModelExporter] compressed-texture export unavailable:', err);
+    }
     this.dracoExporter = new DRACOExporter();
     this.objExporter = new OBJExporter();
     this.stlExporter = new STLExporter();

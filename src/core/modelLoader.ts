@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import JSZip from 'jszip';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
@@ -60,6 +61,7 @@ export interface LoadResult {
 
 export class ModelLoaderService {
   private dracoLoader: DRACOLoader;
+  private ktx2Loader: KTX2Loader | null = null;
   private gltfLoader: GLTFLoader;
   private objLoader: OBJLoader;
   private fbxLoader: FBXLoader;
@@ -79,6 +81,36 @@ export class ModelLoaderService {
     this.gltfLoader.setDRACOLoader(this.dracoLoader);
     if (MeshoptDecoder) {
       this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+    }
+
+    /**
+     * KTX2 / Basis Universal textures.
+     *
+     * Without this, any GLB carrying compressed textures threw
+     * "setKTX2Loader must be called before loading KTX2 textures" out of Tier 1
+     * AND Tier 2, Tier 3 then died on an allocation error, and the file landed
+     * in the Tier 4 point-cloud fallback — which is why an otherwise healthy
+     * model imported as 0 meshes and 0 triangles. Nothing was corrupt; the
+     * pipeline simply could not read that compression.
+     *
+     * The transcoder ships inside the three package we already depend on; it is
+     * copied to public/basis/ at no cost in new dependencies.
+     */
+    try {
+      const ktx2 = new KTX2Loader();
+      ktx2.setTranscoderPath(resolveAssetUrl('basis/'));
+      // detectSupport needs a renderer to ask which GPU formats are available.
+      // A throwaway one is enough, and it is disposed immediately.
+      const probe = new THREE.WebGLRenderer();
+      ktx2.detectSupport(probe);
+      probe.dispose();
+      this.ktx2Loader = ktx2;
+      this.gltfLoader.setKTX2Loader(ktx2);
+    } catch (err) {
+      // No WebGL context available (headless, or a lost context). Compressed
+      // textures will still fail, but everything else must keep working.
+      console.warn('[ModelLoader] KTX2 support unavailable:', err);
+      this.ktx2Loader = null;
     }
 
     this.objLoader = new OBJLoader();
@@ -286,6 +318,7 @@ export class ModelLoaderService {
       const customGltfLoader = new GLTFLoader(manager);
       customGltfLoader.setDRACOLoader(this.dracoLoader);
       if (MeshoptDecoder) customGltfLoader.setMeshoptDecoder(MeshoptDecoder);
+      if (this.ktx2Loader) customGltfLoader.setKTX2Loader(this.ktx2Loader);
       const gltf = await customGltfLoader.parseAsync(text, '');
       return gltf.scene || gltf.scenes[0];
     }
