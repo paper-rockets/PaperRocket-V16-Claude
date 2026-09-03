@@ -74,29 +74,38 @@ export const PlayStats: React.FC<{ theme?: 'light' | 'dark' }> = ({ theme = 'dar
   const isLight = theme === 'light';
   const resting = !isDown.current;
 
+  // Plain text, no panel. It has to stay readable over a white canvas and over a
+  // dark model, so it carries its own outline rather than a background box, and
+  // sits above everything including sheets and full-screen views.
+  const outline = isLight
+    ? '0 0 3px #fff, 0 0 6px #fff, 0 1px 2px rgba(0,0,0,0.35)'
+    : '0 0 3px #000, 0 0 6px #000, 0 1px 2px rgba(0,0,0,0.9)';
+
+  const Line: React.FC<{ label: string; value: React.ReactNode; unit: string; dim?: boolean }> = ({
+    label,
+    value,
+    unit,
+    dim,
+  }) => (
+    <div className="flex items-baseline gap-1">
+      <span className="opacity-70">{label}</span>
+      <span className={`font-bold tabular-nums ${dim ? 'opacity-70' : ''}`}>{value}</span>
+      <span className="opacity-50">{unit}</span>
+    </div>
+  );
+
   return (
     <div
-      className={`fixed left-3 z-20 rounded-xl border px-2.5 py-1.5 text-[10px] font-mono leading-tight
-        pointer-events-none select-none
-        ${isLight ? 'bg-white/95 border-neutral-200 text-neutral-700' : 'bg-[#14161c]/95 border-neutral-800 text-neutral-300'}`}
-      style={{ bottom: 'max(env(safe-area-inset-bottom), 12px)' }}
+      className={`fixed left-2.5 z-[2147483647] text-[11px] font-mono leading-tight
+        pointer-events-none select-none ${isLight ? 'text-neutral-900' : 'text-white'}`}
+      // Under the project name, not the bottom corner: on a phone the bottom
+      // strip reaches the left edge and the numbers landed on top of the colour
+      // button. This gap is empty in every layout.
+      style={{ top: 'calc(max(env(safe-area-inset-top), 4px) + 60px)', textShadow: outline }}
     >
-      <div className="flex items-baseline gap-1.5">
-        <span className="opacity-60">now</span>
-        <span className="font-bold tabular-nums">{fps}</span>
-        <span className="opacity-40">fps</span>
-        {resting && <span className="opacity-40">· resting</span>}
-      </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="opacity-60">draw</span>
-        <span className="font-bold tabular-nums">{activeFps || '--'}</span>
-        <span className="opacity-40">fps</span>
-      </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="opacity-60">lag</span>
-        <span className="font-bold tabular-nums">{lagMs ? lagMs.toFixed(0) : '--'}</span>
-        <span className="opacity-40">ms</span>
-      </div>
+      <Line label="now" value={fps} unit={resting ? 'fps · resting' : 'fps'} dim={resting} />
+      <Line label="draw" value={activeFps || '--'} unit="fps" />
+      <Line label="lag" value={lagMs ? lagMs.toFixed(0) : '--'} unit="ms" />
     </div>
   );
 };

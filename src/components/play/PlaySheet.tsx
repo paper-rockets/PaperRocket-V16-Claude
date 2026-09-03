@@ -14,9 +14,11 @@ interface PlaySheetProps {
   title: string;
   children: React.ReactNode;
   theme?: 'light' | 'dark';
+  /** Lists of settings need more room than a row of swatches. */
+  tall?: boolean;
 }
 
-export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme = 'dark' }) => {
+export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme = 'dark', tall = false }) => {
   const open = useOpenSheet() === id;
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +71,7 @@ export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme
         motion-safe:animate-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-150
         ${isLight ? 'bg-white border-neutral-200 text-neutral-800' : 'bg-[#14161c] border-neutral-800 text-neutral-100'}`}
       style={{
-        maxHeight: '40vh',
+        maxHeight: tall ? '68vh' : '40vh',
         paddingBottom: 'max(env(safe-area-inset-bottom), 12px)',
       }}
     >
@@ -82,7 +84,7 @@ export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme
         <h2 className="text-sm font-bold tracking-tight">{title}</h2>
       </div>
 
-      <div className="px-4 pb-3 overflow-y-auto" style={{ maxHeight: 'calc(40vh - 64px)' }}>
+      <div className="px-4 pb-3 overflow-y-auto" style={{ maxHeight: tall ? 'calc(68vh - 64px)' : 'calc(40vh - 64px)' }}>
         {children}
       </div>
     </div>

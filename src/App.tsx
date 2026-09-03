@@ -42,6 +42,7 @@ import { MagicFxSheet } from './components/play/MagicFxSheet';
 import { FirstRunOverlay } from './components/play/FirstRunOverlay';
 import { Toybox } from './components/play/Toybox';
 import { PlayStats } from './components/play/PlayStats';
+import { PlaySettingsSheet } from './components/play/PlaySettingsSheet';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -186,6 +187,8 @@ export default function App() {
   const openSheet = useOpenSheet();
   const hasOnboarded = useHasOnboarded();
   const [isToyboxOpen, setIsToyboxOpen] = useState<boolean>(false);
+  const [showPlayStats, setShowPlayStats] = useState<boolean>(true);
+  const [showPlayNavigator, setShowPlayNavigator] = useState<boolean>(true);
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -924,7 +927,17 @@ export default function App() {
               />
             }
           />
-          <PlayStats theme={theme} />
+          {showPlayStats && <PlayStats theme={theme} />}
+          <PlaySettingsSheet
+            theme={theme}
+            onSetTheme={handleSetTheme}
+            showNavigator={showPlayNavigator}
+            onToggleNavigator={setShowPlayNavigator}
+            showStats={showPlayStats}
+            onToggleStats={setShowPlayStats}
+            fingerDraw={fingerPenMode}
+            onToggleFingerDraw={setFingerPenMode}
+          />
           <FirstRunOverlay onOpenToybox={() => setIsToyboxOpen(true)} theme={theme} />
           <Toybox
             isOpen={isToyboxOpen}
@@ -1127,7 +1140,7 @@ export default function App() {
         />
       )}
 
-      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'tactile') && !(uiMode === 'play' && (openSheet !== null || !hasOnboarded)) && (
+      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'tactile') && !(uiMode === 'play' && ((openSheet !== null && openSheet !== 'settings') || !hasOnboarded || !showPlayNavigator)) && (
         <PaperRocketTactileWheel
           engine={engine}
           theme={theme}

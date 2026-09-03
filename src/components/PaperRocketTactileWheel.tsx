@@ -36,6 +36,9 @@ import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
 import { useUiMode } from '../core/uiModeStore';
 
 export interface PaperRocketTactileWheelProps {
+  /** Light or dark, so the wheel matches the rest of the app instead of
+      staying black on a white screen. */
+  theme?: 'light' | 'dark';
   engine?: StudioEngine | null;
   cameraSpherical?: { radius: number; theta: number; phi: number };
   brushSettings?: BrushSettings;
@@ -84,6 +87,7 @@ export interface PaperRocketTactileWheelProps {
  * Keep it opaque; do not reintroduce backdrop-blur here.
  */
 export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
+  theme = 'dark',
   engine,
   brushSettings,
   onUpdateBrushSettings,
@@ -118,6 +122,14 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   // prop App.tsx would have to pass) so this component self-adjusts without any
   // change to its call site - see uiModeStore.ts.
   const uiMode = useUiMode();
+  const isLightTheme = theme === 'light';
+  /** Card, dial face and edge, matched to the app's light or dark look. */
+  const shellCard = isLightTheme
+    ? 'bg-white border-neutral-200 shadow-[0_20px_50px_rgba(0,0,0,0.18)] text-neutral-800'
+    : 'bg-[#14151a] border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6)] text-neutral-100';
+  const shellDial = isLightTheme
+    ? 'bg-neutral-100 border-neutral-300'
+    : 'bg-[#18181b] border-neutral-800';
   const isPlayMode = uiMode === 'play';
 
   // Mode state with internal fallback
@@ -874,12 +886,18 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
     const rad = (delta * Math.PI) / 180;
     if (engine) {
-      if (mode === '3d') {
-        // In 3D World the ring turns around the up axis — the one a turntable turns on.
-        engine.rotateWorldAxis('y', rad, targetScope, isLocked);
-      } else {
-        engine.rotateScreenSpace(rad, targetScope, isLocked);
-      }
+      // Always spin in the plane of the screen, in BOTH modes.
+      //
+      // The ring used to turn around the world up-axis in 3D World. On a flat
+      // drawing sheet that swings it edge-on, so at 90 degrees the canvas
+      // disappeared completely — it was still there, just infinitely thin from
+      // where you were sitting.
+      //
+      // A flat circular control should produce a flat rotation: things spin like
+      // paper on a desk, facing you, and can never vanish. Turning around a world
+      // axis is a different idea and already has its own control — the red, green
+      // and blue nodes.
+      engine.rotateScreenSpace(rad, targetScope, isLocked);
     }
     onUpdateSpatial((prev) => ({ ...prev, roll: (prev.roll + delta) % 360 }));
   };
@@ -1081,7 +1099,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           playHapticSound('pop', soundEnabled);
           setIsOpen(true);
         }}
-        className="fixed z-40 px-3.5 py-2 rounded-2xl bg-[#14151a]/95 border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.6)] flex items-center gap-2 text-white cursor-pointer group select-none"
+        className={`fixed z-40 px-3.5 py-2 rounded-2xl border flex items-center gap-2 cursor-pointer group select-none ${shellCard}`}
         title="Restore Tactile Wheel"
       >
         <Disc className="w-4 h-4 text-sky-400" />
@@ -1107,7 +1125,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         transform: `scale(${(uiScale || 1.0) * scaleFactor})`,
         transformOrigin: 'top left',
       }}
-      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] bg-[#14151a]/95 border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
+      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] border ${shellCard} overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -1161,7 +1179,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           onPointerCancel={() => {
             cancelLongPressDetection();
           }}
-          className={`relative ${wheelSizeClass} rounded-full bg-[#18181b]/95 border border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
+          className={`relative ${wheelSizeClass} rounded-full border ${shellDial} shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
         >
         {/* Inner Surface with Velocity-Based CSS Vibration (Preventing outer button displacement glitches) */}
         <div
@@ -1274,7 +1292,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                   ? 'border-solid border-sky-300'
                   : isRingTurning
                     ? 'border-dashed border-sky-400/70'
-                    : 'border-dashed border-white/12'
+                    : isLightTheme
+                      ? 'border-dashed border-neutral-300'
+                      : 'border-dashed border-white/12'
               }`}
             />
 
@@ -1297,7 +1317,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
               >
                 <div
                   className={`absolute rounded-full transition-colors duration-150 ${
-                    ringInDetent ? 'bg-sky-300/80' : 'bg-white/25'
+                    ringInDetent ? 'bg-sky-500' : isLightTheme ? 'bg-neutral-400' : 'bg-white/25'
                   }`}
                   style={{ width: 2, height: 7, left: -1, top: -(ringRadiusPx - 1) }}
                 />
