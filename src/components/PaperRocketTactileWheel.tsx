@@ -32,6 +32,7 @@ import { StudioEngine } from '../core/studioEngine';
 import { playHapticSound } from '../utils/audio';
 import { ThreeTrackball } from './ThreeTrackball';
 import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
+import { useUiMode } from '../core/uiModeStore';
 
 export interface PaperRocketTactileWheelProps {
   engine?: StudioEngine | null;
@@ -97,6 +98,12 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   onPaste,
   clipboardCount = 0,
 }) => {
+  // Play/Pro appearance. Read directly from the shared mode store (rather than a
+  // prop App.tsx would have to pass) so this component self-adjusts without any
+  // change to its call site - see uiModeStore.ts.
+  const uiMode = useUiMode();
+  const isPlayMode = uiMode === 'play';
+
   // Mode state with internal fallback
   const [internalMode, setInternalMode] = useState<SpatialMode>('3d');
   const mode = controlledMode !== undefined ? controlledMode : internalMode;
@@ -288,6 +295,16 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   // Widget states
   const [isOpen, setIsOpen] = useState<boolean>(true);
   const [subMode, setSubMode] = useState<SubWheelMode>('joystick');
+
+  // Play only shows the joystick (colour-coded petals + white centre puck) - the
+  // Number Scrubber Dial (numeric readouts) and 3D Sphere Roll are Pro-only
+  // alternates. If the wheel arrives (or was left, from a prior Pro session) on
+  // either, fall back to the joystick automatically.
+  useEffect(() => {
+    if (isPlayMode && subMode !== 'joystick') {
+      setSubMode('joystick');
+    }
+  }, [isPlayMode, subMode]);
   const [dialMode, setDialMode] = useState<'brush_size' | 'zoom' | 'rotate'>('brush_size');
   const [showMenu, setShowMenu] = useState<boolean>(false);
   const [showHiddenPhysicsPanel, setShowHiddenPhysicsPanel] = useState<boolean>(false);
@@ -382,6 +399,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   const longPressStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const startLongPressDetection = (e: React.PointerEvent) => {
+    // Physics tuning is a Pro-only surface - don't arm the hidden panel in Play.
+    if (isPlayMode) return;
     // Only detect on background / rim, not buttons
     longPressStartPos.current = { x: e.clientX, y: e.clientY };
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -975,6 +994,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         onCopy={onCopy}
         onPaste={onPaste}
         clipboardCount={clipboardCount}
+        simplified={isPlayMode}
       />
 
       {/* Main PaperRockets Tactile Circular Disc Body */}
@@ -1019,7 +1039,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         </div>
 
         {/* Outer Ring Navigation Buttons & Mode Changers (with stopPropagation) */}
-        {/* Top Arc Pill (Switch to Dial / Step) */}
+        {/* Top Arc Pill (Switch to Dial / Step) - Pro only: the numeric-readout dial isn't part of Play */}
+        {!isPlayMode && (
         <motion.button
           id="submode-dial-pill"
           whileHover={{ scale: 1.1 }}
@@ -1039,8 +1060,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         >
           <div className="w-4 h-1.5 rounded-full bg-current opacity-80" />
         </motion.button>
+        )}
 
-        {/* Right Arc Pill (Switch to 3D Sphere Roll) */}
+        {/* Right Arc Pill (Switch to 3D Sphere Roll) - Pro only alternate to the joystick */}
+        {!isPlayMode && (
         <motion.button
           id="submode-ball-pill"
           whileHover={{ scale: 1.1 }}
@@ -1060,8 +1083,11 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         >
           <div className="w-1.5 h-4 rounded-full bg-current opacity-80" />
         </motion.button>
+        )}
 
-        {/* Left Arc Button (Quick Recenter) */}
+        {/* Left Arc Button (Quick Recenter) - Pro only; Play already has Reset in the header,
+            a second reset button next to it would just be clutter */}
+        {!isPlayMode && (
         <motion.button
           id="quick-recenter-pill"
           whileHover={{ scale: 1.1 }}
@@ -1077,6 +1103,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         >
           <RotateCcw className="w-3 h-3" />
         </motion.button>
+        )}
 
         {/* ---------------------------------------------------- */}
         {/* CENTER INTERACTIVE CORE: 3 CHILD-SIMPLE TOY MODES     */}
@@ -1111,13 +1138,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 title="Move Y (Elevation)"
               />
 
-              {/* Left/Pink Petal (Lateral X) */}
+              {/* Left/Red Petal (Lateral X) - colour law: Red=X, Green=Y, Blue=Z.
+                  Was pink (#ec4899), which broke the mapping; #ef4444 matches the
+                  red used for the X axis everywhere else (see ThreeDimensionalDial). */}
               <button
-                id="petal-pink-x"
+                id="petal-red-x"
                 onPointerDown={(e) => handleJoystickDown(e, 'x')}
                 className={`absolute ${
                   isBiggerUI ? '-left-1.5 w-10 h-6' : '-left-1 w-8 h-5'
-                } rounded-full bg-[#ec4899] hover:brightness-125 transition-all shadow-md cursor-pointer`}
+                } rounded-full bg-[#ef4444] hover:brightness-125 transition-all shadow-md cursor-pointer`}
                 title="Move X (Lateral)"
               />
 
@@ -1151,8 +1180,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                 isBiggerUI ? 'w-16 h-16 min-w-[48px] min-h-[48px]' : 'w-12 h-12 min-w-[40px] min-h-[40px]'
               } rounded-full bg-[radial-gradient(circle_at_35%_30%,#ffffff_0%,#f8fafc_50%,#cbd5e1_100%)] border border-white/60 text-neutral-900 font-bold flex items-center justify-center text-xs shadow-xl cursor-grab active:cursor-grabbing select-none`}
             >
-              {/* Dynamic metric label inside puck like in the video */}
-              {isDraggingJoystick && dragValueLabel ? (
+              {/* Dynamic metric label inside puck like in the video - Pro only;
+                  Play keeps the plain dot so dragging never shows raw numbers */}
+              {!isPlayMode && isDraggingJoystick && dragValueLabel ? (
                 <span className="text-[10px] sm:text-[11px] font-extrabold tracking-tight text-neutral-950 animate-pulse">
                   {dragValueLabel}
                 </span>
@@ -1165,8 +1195,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           </div>
         )}
 
-        {/* MODE 2: ROLLING 3D TOY SPHERE (Real Three.js WebGPU/WebGL 3D Sphere Trackball) */}
-        {subMode === 'ball' && (
+        {/* MODE 2: ROLLING 3D TOY SPHERE (Real Three.js WebGPU/WebGL 3D Sphere Trackball) - Pro only */}
+        {subMode === 'ball' && !isPlayMode && (
           <div
             id="paperrocket-trackball-sphere"
             className={`relative ${
@@ -1201,8 +1231,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           </div>
         )}
 
-        {/* MODE 3: RADIAL SCRUBBER DIAL */}
-        {subMode === 'dial' && (
+        {/* MODE 3: RADIAL SCRUBBER DIAL (numeric brush/zoom/rotate readouts) - Pro only */}
+        {subMode === 'dial' && !isPlayMode && (
           <div
             ref={dialRef}
             id="paperrocket-radial-dial"
@@ -1265,7 +1295,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         )}
       </motion.div>
 
-        {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) */}
+        {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) - Pro only */}
+        {!isPlayMode && (
         <button
           id="paperrocket-settings-btn"
           type="button"
@@ -1285,6 +1316,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         >
           <MoreHorizontal className="w-3.5 h-3.5" />
         </button>
+        )}
 
         {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
         <button
@@ -1305,9 +1337,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         </button>
       </div>
 
-      {/* PaperRockets Quick Settings Popover anchored at Bottom */}
+      {/* PaperRockets Quick Settings Popover anchored at Bottom - Pro only (unreachable in
+          Play since the settings button that opens it is hidden; guarded here too) */}
       <AnimatePresence>
-        {showMenu && (
+        {showMenu && !isPlayMode && (
           <motion.div
             id="paperrocket-settings-popover"
             initial={{ opacity: 0, scale: 0.92, y: 8 }}
@@ -1457,9 +1490,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
       {/* ------------------------------------------------------------------ */}
       {/* HIDDEN SETTINGS PANEL (Accessible via Long-Press on Tactile Wheel) */}
+      {/* Pro only - the long-press trigger itself is disarmed in Play        */}
       {/* ------------------------------------------------------------------ */}
       <AnimatePresence>
-        {showHiddenPhysicsPanel && (
+        {showHiddenPhysicsPanel && !isPlayMode && (
           <motion.div
             id="paperrocket-hidden-physics-panel"
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -1661,7 +1695,9 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         )}
       </AnimatePresence>
 
-      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") */}
+      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") - Pro only; resizes the
+          widget chrome, not the object, so it's outside what Play needs at rest */}
+      {!isPlayMode && (
       <div
         id="paperrocket-wheel-resize-handle"
         onPointerDown={handleResizeStart}
@@ -1684,9 +1720,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           </div>
         </div>
       </div>
+      )}
 
       {/* Live Scale Percentage Badge while Resizing */}
-      {isResizing && (
+      {isResizing && !isPlayMode && (
         <div className="absolute top-2 right-12 z-50 px-2 py-0.5 rounded-full bg-sky-500 text-black font-mono font-bold text-[10px] shadow-lg pointer-events-none animate-in fade-in duration-100">
           {Math.round(scaleFactor * 100)}%
         </div>

@@ -49,12 +49,27 @@ export interface NavigatorHeaderProps {
   scaleFactor?: number;
   onScaleCycle?: () => void;
   onScaleSet?: (scale: number) => void;
+  /**
+   * Play-mode appearance. Collapses the header to the state tabs + Reset:
+   * target/layer/model selector, copy, paste, lock, accessibility and haptics
+   * buttons are hidden (not removed - their state and handlers still work,
+   * there's simply no button to reach them from). Also swaps the tab set to
+   * the two-tab Play labels and drops the Tactile Ball tab. Omit or pass
+   * false for the unchanged Pro appearance.
+   */
+  simplified?: boolean;
 }
 
 const DEFAULT_TABS: NavigatorTabItem[] = [
   { id: '2d', label: '2D Dial' },
   { id: '3d', label: '3D Spatial' },
   { id: 'tactile', label: 'Tactile Ball' },
+];
+
+/** Play mode only shows the two axes a beginner needs; Tactile Ball stays Pro-only. */
+const SIMPLIFIED_TABS: NavigatorTabItem[] = [
+  { id: '2d', label: 'Flat Screen' },
+  { id: '3d', label: '3D World' },
 ];
 
 export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
@@ -78,6 +93,7 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
   onCopy,
   onPaste,
   clipboardCount = 0,
+  simplified = false,
 }) => {
   const [hapticsEnabled, setHapticsEnabled] = useState(haptics.getEnabled());
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -182,12 +198,14 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
     displayLabel = 'All Objects';
   }
 
+  const effectiveTabs = simplified ? SIMPLIFIED_TABS : tabs;
+
   const gridColsClass =
-    tabs.length === 2
+    effectiveTabs.length === 2
       ? 'grid-cols-2'
-      : tabs.length === 3
+      : effectiveTabs.length === 3
       ? 'grid-cols-3'
-      : tabs.length === 4
+      : effectiveTabs.length === 4
       ? 'grid-cols-4'
       : 'grid-cols-3';
 
@@ -202,7 +220,7 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
           role="tablist"
           aria-label="Transform Dimension Mode"
         >
-          {tabs.map((tab) => {
+          {effectiveTabs.map((tab) => {
             const isSelected = mode === tab.id;
             return (
               <button
@@ -226,7 +244,8 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
 
         {/* Action Icons row: Target Selector, Copy, Paste, Lock, Reset, Accessibility, Haptics */}
         <div className="flex items-center justify-between px-1">
-          {/* Target Layer / Model Selector Button */}
+          {/* Target Layer / Model Selector Button (Pro only - Play always targets the active layer) */}
+          {!simplified && (
           <div className="relative">
             <button
               ref={triggerRef}
@@ -367,9 +386,12 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
               </div>
             )}
           </div>
+          )}
 
-          <div className="flex items-center gap-0.5">
-            {/* Copy Action */}
+          <>
+            <div className={`flex items-center gap-0.5${simplified ? ' ml-auto' : ''}`}>
+            {/* Copy Action (Pro only) */}
+            {!simplified && (
             <button
               id="navigator-btn-copy"
               type="button"
@@ -384,8 +406,10 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               <Copy className="w-3.5 h-3.5" />
             </button>
+            )}
 
-            {/* Paste Action */}
+            {/* Paste Action (Pro only) */}
+            {!simplified && (
             <button
               id="navigator-btn-paste"
               type="button"
@@ -400,8 +424,10 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               <ClipboardPaste className="w-3.5 h-3.5" />
             </button>
+            )}
 
-            {/* Lock Constraint Button */}
+            {/* Lock Constraint Button (Pro only) */}
+            {!simplified && (
             <button
               id="navigator-btn-lock"
               type="button"
@@ -416,8 +442,9 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
             </button>
+            )}
 
-            {/* Reset Origin Button */}
+            {/* Reset Origin Button (kept in Play - it moves the object back, not a settings control) */}
             <button
               id="navigator-btn-reset"
               type="button"
@@ -429,7 +456,8 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
-            {/* Finger-Pen Accessibility Mode Toggle */}
+            {/* Finger-Pen Accessibility Mode Toggle (Pro only) */}
+            {!simplified && (
             <button
               id="navigator-btn-accessibility"
               type="button"
@@ -444,8 +472,10 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               <PenTool className="w-3.5 h-3.5" />
             </button>
+            )}
 
-            {/* Haptic Feedback Toggle */}
+            {/* Haptic Feedback Toggle (Pro only) */}
+            {!simplified && (
             <button
               id="navigator-btn-haptics"
               type="button"
@@ -460,7 +490,9 @@ export const NavigatorHeader: React.FC<NavigatorHeaderProps> = ({
             >
               <Vibrate className="w-3.5 h-3.5" />
             </button>
-          </div>
+            )}
+            </div>
+          </>
         </div>
       </div>
     </div>

@@ -7,6 +7,12 @@ interface NavigatorFooterProps {
   isLocked: boolean;
   accessibilityMode: AccessibilityMode;
   onFooterDragStart?: (e: React.PointerEvent) => void;
+  /**
+   * Play-mode appearance: hides the helper/status text (view-alignment copy,
+   * "Engaged: <handle>" readout, lock/finger-pen tags) and leaves only the
+   * drag grip. Omit or pass false for the unchanged Pro appearance.
+   */
+  simplified?: boolean;
 }
 
 export const NavigatorFooter: React.FC<NavigatorFooterProps> = ({
@@ -15,6 +21,7 @@ export const NavigatorFooter: React.FC<NavigatorFooterProps> = ({
   isLocked,
   accessibilityMode,
   onFooterDragStart,
+  simplified = false,
 }) => {
   const defaultHelperText =
     mode === '2d'
@@ -33,6 +40,7 @@ export const NavigatorFooter: React.FC<NavigatorFooterProps> = ({
       title="Drag here to move controller anywhere on screen"
       className="px-3 py-2 bg-[#141519]/95 hover:bg-[#1a1b22] border-t border-white/[0.08] flex flex-col items-center justify-center text-center select-none cursor-grab active:cursor-grabbing touch-none transition-colors group"
     >
+      {!simplified && (
       <div className="flex items-center gap-1.5 justify-center">
         {activeHandle ? (
           <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-emerald-400 animate-pulse">
@@ -45,9 +53,10 @@ export const NavigatorFooter: React.FC<NavigatorFooterProps> = ({
           </p>
         )}
       </div>
+      )}
 
-      {/* Auxiliary tiny indicators if special mode active */}
-      {(isLocked || accessibilityMode === 'finger-pen') && (
+      {/* Auxiliary tiny indicators if special mode active (Pro only) */}
+      {!simplified && (isLocked || accessibilityMode === 'finger-pen') && (
         <div className="mt-0.5 flex items-center gap-2 text-[9px] text-zinc-500">
           {isLocked && (
             <span className="text-red-400/90 font-mono tracking-tight">

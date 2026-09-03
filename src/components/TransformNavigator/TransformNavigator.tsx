@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MoreHorizontal,
@@ -14,8 +15,18 @@ import { TwoDimensionalDial } from './TwoDimensionalDial';
 import { ThreeDimensionalDial } from './ThreeDimensionalDial';
 import { TactileNavigatorDial } from './TactileNavigatorDial';
 import { playHapticSound } from '../../utils/audio';
+import { useUiMode } from '../../core/uiModeStore';
+import { subscribeCameraPose } from '../../core/telemetryStore';
 
-export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
+/**
+ * `simplified` is threaded through as an explicit optional prop (per the Play/Pro
+ * split), but nothing upstream passes it yet - App.tsx's render call site is out of
+ * scope for this change. So when the prop is omitted, fall back to reading the mode
+ * store directly (it's already a public module-level signal, see uiModeStore.ts)
+ * rather than defaulting to the Pro appearance. An explicit prop always wins, so a
+ * future caller (or a test) can still force either appearance.
+ */
+export const TransformNavigator: React.FC<TransformNavigatorProps & { simplified?: boolean }> = ({
   initialMode = '2d',
   isLocked: controlledLocked,
   onLockChange,
@@ -46,7 +57,10 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
   uiScale = 1.0,
   className = '',
   engine,
+  simplified: simplifiedProp,
 }) => {
+  const uiMode = useUiMode();
+  const isSimplified = simplifiedProp ?? uiMode === 'play';
   // Internal Mode State (with fallback if not controlled)
   const [mode, setMode] = useState<TransformMode>(initialMode);
   const [isOpen, setIsOpen] = useState(true);
@@ -210,6 +224,83 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
     [onModeChange]
   );
 
+  // Play mode only offers the "Flat Screen" / "3D World" tabs - if the widget
+  // arrives (or was left, from a prior Pro session) on Tactile Ball, there is no
+  // tab left to switch away from it. Fall back to the 2D dial automatically.
+  useEffect(() => {
+    if (isSimplified && mode === 'tactile') {
+      setMode('2d');
+      onModeChange?.('2d');
+    }
+  }, [isSimplified, mode, onModeChange]);
+
+  // --- Silent depth-guard toast --------------------------------------------
+  // Snapping to an axis-aligned Front/Top/Side view collapses one axis to zero
+  // (studioEngine.getPerfectView()), which quietly stops that axis from doing
+  // anything - confusing without feedback. `engine` is already threaded into
+  // this component as a prop, so this reads the engine's read-only view state
+  // directly; it deliberately does NOT touch `engine.onViewChange`, since that
+  // is a single-callback slot App.tsx already owns (see App.tsx's `perfectView`
+  // state) - assigning it here would silently steal that subscription instead
+  // of sharing it. Re-checks whenever the camera pose telemetry changes
+  // (telemetryStore.ts), so it's event-driven rather than a blind poll.
+  const [showDepthLockToast, setShowDepthLockToast] = useState(false);
+  const wasDepthLockedRef = useRef(false);
+  const depthToastTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!engine || typeof engine.getPerfectView !== 'function') return;
+
+    const checkDepthLock = () => {
+      let info: { isPerfect?: boolean; depthAxis?: 'x' | 'y' | 'z' | null } | undefined;
+      try {
+        info = engine.getPerfectView();
+      } catch {
+        return;
+      }
+      const isDepthLocked = !!(info && info.isPerfect && info.depthAxis);
+      if (isDepthLocked && !wasDepthLockedRef.current) {
+        setShowDepthLockToast(true);
+        if (depthToastTimeoutRef.current !== null) {
+          window.clearTimeout(depthToastTimeoutRef.current);
+        }
+        depthToastTimeoutRef.current = window.setTimeout(() => {
+          setShowDepthLockToast(false);
+        }, 2200);
+      }
+      wasDepthLockedRef.current = isDepthLocked;
+    };
+
+    checkDepthLock();
+    const unsubscribe = subscribeCameraPose(checkDepthLock);
+    return () => {
+      unsubscribe();
+      if (depthToastTimeoutRef.current !== null) {
+        window.clearTimeout(depthToastTimeoutRef.current);
+      }
+    };
+  }, [engine]);
+
+  // Reuses the exact toast styling App.tsx uses for `snappedShapeNotice`
+  // (see App.tsx, search "snappedShapeNotice"). Portaled to <body> because this
+  // widget's own root is `transform: scale(...)`-ed, which would otherwise
+  // drag a `position: fixed` child along with it instead of pinning it to the
+  // viewport.
+  const depthLockToast =
+    typeof document !== 'undefined'
+      ? createPortal(
+          showDepthLockToast ? (
+            <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/90 text-neutral-950 font-semibold text-xs shadow-xl backdrop-blur-md border border-amber-300/40">
+                <span className="w-2 h-2 rounded-full bg-neutral-950 animate-ping" />
+                <span>Depth locked - you're drawing flat</span>
+              </div>
+            </div>
+          ) : null,
+          document.body
+        )
+      : null;
+
   const handleLockToggle = useCallback(() => {
     const nextLocked = !isLocked;
     setInternalLocked(nextLocked);
@@ -328,7 +419,9 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
   // If collapsed to mini button
   if (!isOpen) {
     return (
-      <motion.button
+      <>
+        {depthLockToast}
+        <motion.button
         id="transform-navigator-mini-trigger"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -352,12 +445,15 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
           <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-emerald-400 transition-colors" />
           <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-emerald-400 transition-colors" />
         </div>
-      </motion.button>
+        </motion.button>
+      </>
     );
   }
 
   return (
-    <aside
+    <>
+      {depthLockToast}
+      <aside
       id="transform-navigator-widget"
       role="region"
       aria-label="Transform Joystick Widget"
@@ -394,6 +490,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
         onCopy={onCopy}
         onPaste={onPaste}
         clipboardCount={clipboardCount}
+        simplified={isSimplified}
       />
 
       {/* Dial Interactive Surface & Drag Area around the Circle */}
@@ -445,7 +542,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
               </motion.div>
             )}
 
-            {mode === 'tactile' && (
+            {mode === 'tactile' && !isSimplified && (
               <motion.div
                 key="view-tactile"
                 initial={{ opacity: 0, scale: 0.94, rotate: 2 }}
@@ -467,7 +564,8 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
             )}
           </AnimatePresence>
 
-          {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) */}
+          {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) - Pro only */}
+          {!isSimplified && (
           <button
             id="transform-navigator-settings-btn"
             type="button"
@@ -487,6 +585,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
           >
             <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
+          )}
 
           {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
           <button
@@ -508,9 +607,10 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
         </div>
       </div>
 
-      {/* Navigator Quick Settings Popover anchored at Bottom */}
+      {/* Navigator Quick Settings Popover anchored at Bottom - Pro only (unreachable in
+          Play since the settings button that opens it is hidden; guarded here too) */}
       <AnimatePresence>
-        {showMenu && (
+        {showMenu && !isSimplified && (
           <motion.div
             id="navigator-settings-popover"
             initial={{ opacity: 0, scale: 0.92, y: 8 }}
@@ -658,9 +758,10 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Physics Configuration Panel for Standard Navigator */}
+      {/* Physics Configuration Panel for Standard Navigator - Pro only (unreachable in
+          Play since its only entry point, the settings popover, is hidden) */}
       <AnimatePresence>
-        {showHiddenPhysicsPanel && (
+        {showHiddenPhysicsPanel && !isSimplified && (
           <motion.div
             id="navigator-hidden-physics-panel"
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -861,7 +962,9 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") */}
+      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") - Pro only; resizes the
+          widget chrome, not the object, so it's outside what Play needs at rest */}
+      {!isSimplified && (
       <div
         id="transform-navigator-resize-handle"
         onPointerDown={handleResizeStart}
@@ -884,6 +987,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* Live Scale Percentage Badge while Resizing */}
       {isResizing && (
@@ -891,6 +995,7 @@ export const TransformNavigator: React.FC<TransformNavigatorProps> = ({
           {Math.round(navigatorScale * 100)}%
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 };
