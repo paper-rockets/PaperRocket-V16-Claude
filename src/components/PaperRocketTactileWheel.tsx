@@ -1138,7 +1138,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
             {/* Fixed Outer Ring Degree Indicators (0, 45, 90, 135, 180, 225, 270, 315 degrees) */}
             <OuterDegreeIndicatorRing
               theme={theme}
-              size={isBiggerUI ? 214 : 196}
+              size={isBiggerUI ? 250 : 230}
               highlightAngle={snappedMilestone}
             />
 

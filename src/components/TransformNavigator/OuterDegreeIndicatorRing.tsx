@@ -42,7 +42,7 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
     const cx = 115;
     const cy = 115;
     const rOuter = 111;
-    const rText = 82;
+    const rText = 78;
 
     // Step by 5 degrees for a total of 72 divisions
     for (let deg = 0; deg < 360; deg += 5) {
@@ -99,7 +99,7 @@ export const OuterDegreeIndicatorRing: React.FC<OuterDegreeIndicatorRingProps> =
     <svg
       id="navigator-outer-degree-ring"
       viewBox="0 0 230 230"
-      className={`absolute inset-0 w-full h-full pointer-events-none select-none z-10 overflow-visible ${className}`}
+      className={`absolute inset-0 m-auto pointer-events-none select-none z-10 overflow-visible ${className}`}
       style={{ width: size, height: size }}
       aria-hidden="true"
     >
