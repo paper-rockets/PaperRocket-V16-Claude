@@ -781,6 +781,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
    * No mode, no menu — the shape tells you.
    */
   const ringRef = useRef<HTMLDivElement | null>(null);
+  /** Radius the notch marks sit on, matching the dashed ring inset. */
+  const ringRadiusPx = isBiggerUI ? 96 : 74;
   const ringLastAngle = useRef<number | null>(null);
   const [isRingTurning, setIsRingTurning] = useState<boolean>(false);
 
@@ -801,6 +803,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   const ringAppliedAngle = useRef<number>(0);
   const ringDetentRef = useRef<number>(0);
   const [ringInDetent, setRingInDetent] = useState<boolean>(false);
+  /** Total turn applied so far, so the marker still means something after you let go. */
+  const [ringTotalAngle, setRingTotalAngle] = useState<number>(0);
+
+  /** Reset also puts the turn indicator back to straight. */
+  const handleRingAwareReset = useCallback(() => {
+    setRingTotalAngle(0);
+    ringAppliedAngle.current = 0;
+    onReset?.();
+  }, [onReset]);
 
   const ringAngleAt = (e: React.PointerEvent): number | null => {
     const el = ringRef.current;
@@ -841,7 +852,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     ringLastAngle.current = a;
 
     // How far the angle we are heading for sits from the nearest notch.
-    const DETENT_EVERY = 45;
+    const DETENT_EVERY = 90;
     const CAPTURE_DEG = 9;
     const MIN_PASS = 0.25; // right on a notch, only a quarter of your movement counts
     const target = ringAppliedAngle.current + delta;
@@ -855,6 +866,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     delta *= resistance;
 
     ringAppliedAngle.current += delta;
+    setRingTotalAngle((prev) => prev + delta);
     if (inDetent !== ringInDetent) setRingInDetent(inDetent);
 
     // A tick as each notch goes by, stronger on the quarter turns.
@@ -1110,7 +1122,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         ]}
         isLocked={isLocked}
         onLockToggle={handleLockToggle}
-        onReset={onReset || (() => {})}
+        onReset={handleRingAwareReset}
         isCollapsed={false}
         onCollapseToggle={() => {}}
         onClose={onClose}
@@ -1265,6 +1277,56 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
                     : 'border-dashed border-white/12'
               }`}
             />
+
+            {/*
+              Turn indicator.
+
+              Four faint marks show where the notches are, so the resistance you
+              feel has somewhere visible to belong. One bright pointer turns with
+              the canvas, so a glance tells you how far from straight you are -
+              which the ring alone could never say, since it looks identical at
+              0 and at 180 degrees.
+
+              Everything here is non-interactive and sits under the puck.
+            */}
+            {[0, 90, 180, 270].map((deg) => (
+              <div
+                key={deg}
+                className="absolute left-1/2 top-1/2 w-0 h-0 pointer-events-none"
+                style={{ transform: `rotate(${deg}deg)` }}
+              >
+                <div
+                  className={`absolute rounded-full transition-colors duration-150 ${
+                    ringInDetent ? 'bg-sky-300/80' : 'bg-white/25'
+                  }`}
+                  style={{ width: 2, height: 7, left: -1, top: -(ringRadiusPx - 1) }}
+                />
+              </div>
+            ))}
+
+            {/* The pointer. Hidden at dead straight, because then there is
+                nothing to report and a marker would just be furniture. */}
+            {Math.abs(ringTotalAngle % 360) > 0.5 && (
+              <div
+                className="absolute left-1/2 top-1/2 w-0 h-0 pointer-events-none"
+                style={{ transform: `rotate(${ringTotalAngle}deg)` }}
+              >
+                <div
+                  className="absolute rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.9)]"
+                  style={{ width: 4, height: 12, left: -2, top: -(ringRadiusPx + 1) }}
+                />
+              </div>
+            )}
+
+            {/* Degrees, only while your finger is down. */}
+            {isRingTurning && (
+              <div className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
+                   style={{ top: 6 }}>
+                <span className="text-[10px] font-bold tabular-nums text-sky-300">
+                  {Math.round(((ringTotalAngle % 360) + 360) % 360)}&deg;
+                </span>
+              </div>
+            )}
           </div>
         )}
 
