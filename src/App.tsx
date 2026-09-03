@@ -33,7 +33,7 @@ import { FpsCounter } from './components/FpsCounter';
 import { DeferredPanel } from './components/DeferredPanel';
 import { publishCameraPose, publishFps } from './core/telemetryStore';
 import { useUiMode, useHasOnboarded } from './core/uiModeStore';
-import { useOpenSheet } from './components/play/sheetStore';
+import { useOpenSheet, openSheetId } from './components/play/sheetStore';
 import { PlayTopStrip } from './components/play/PlayTopStrip';
 import { PlayDock, PlayToolId, playToolSettings } from './components/play/PlayDock';
 import { PlayContextStrip } from './components/play/PlayContextStrip';
@@ -874,7 +874,10 @@ export default function App() {
         fingerPenMode={fingerPenMode}
         onToggleFingerPenMode={setFingerPenMode}
         liquifySettings={liquifySettings}
-        onOpenColorPanel={() => setIsSettingsOpen(true)}
+        onOpenColorPanel={() => {
+          if (uiMode === 'play') openSheetId('brushes');
+          else setIsSettingsOpen(true);
+        }}
         onOpenNumpad={(t) => setNumpadTarget(t)}
         disableContextMenu={disableContextMenu}
         onToggleDisableContextMenu={handleToggleDisableContextMenu}
@@ -1195,7 +1198,7 @@ export default function App() {
       )}
 
       {/* Brush Settings / Color Panel */}
-      {isSettingsOpen && (
+      {isSettingsOpen && uiMode === 'pro' && (
         <BrushSettingsPanel
           brushSettings={brushSettings}
           setBrushSettings={setBrushSettings}

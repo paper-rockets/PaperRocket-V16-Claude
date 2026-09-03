@@ -15,6 +15,7 @@ import {
   Monitor,
 } from 'lucide-react';
 import { isFullscreen, toggleFullscreen, subscribeFullscreenChange, isStandalonePWA } from '../../utils/fullscreen';
+import { useUiMode } from '../../core/uiModeStore';
 
 export type DevicePreset = 's6lite' | 's25ultra' | 'fullscreen';
 export type Orientation = 'portrait' | 'landscape';
@@ -139,6 +140,7 @@ export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
   initialDevice = 'fullscreen',
 }) => {
   // Determine initial device preset from query parameter, port, or prop
+  const uiMode = useUiMode();
   const [device, setDevice] = useState<DevicePreset>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -267,7 +269,11 @@ export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
     return (
       <div className="w-screen h-screen overflow-hidden select-none bg-black relative group">
         <App />
-        {/* Floating Quick Action Badge in Direct View */}
+        {/* Developer harness badge. It sits at top-right with z-50, which is exactly
+            where Play's Zone A keeps undo, redo and the menu — so it both covered
+            real controls and put "Emulator" in front of someone who just wants to
+            draw. Pro only. */}
+        {uiMode === 'pro' && (
         <div className="fixed top-2.5 right-2.5 z-50 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-[#14151a]/80 hover:bg-[#14151a]/95 backdrop-blur-md border border-neutral-800 p-1 rounded-xl shadow-xl">
           <button
             type="button"
@@ -287,6 +293,7 @@ export const DeviceSimulatorWrapper: React.FC<DeviceSimulatorWrapperProps> = ({
             <span>Emulator</span>
           </button>
         </div>
+        )}
       </div>
     );
   }
