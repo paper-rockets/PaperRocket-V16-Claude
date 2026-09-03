@@ -32,7 +32,7 @@ import { ScreenCenterCrosshair } from './components/ScreenCenterCrosshair';
 import { FpsCounter } from './components/FpsCounter';
 import { DeferredPanel } from './components/DeferredPanel';
 import { publishCameraPose, publishFps } from './core/telemetryStore';
-import { useUiMode, useHasOnboarded } from './core/uiModeStore';
+import { useUiMode, useHasOnboarded, setUiMode } from './core/uiModeStore';
 import { useOpenSheet, openSheetId } from './components/play/sheetStore';
 import { PlayTopStrip } from './components/play/PlayTopStrip';
 import { PlayDock, PlayToolId, playToolSettings } from './components/play/PlayDock';
@@ -44,7 +44,7 @@ import { Toybox } from './components/play/Toybox';
 import { PlayStats } from './components/play/PlayStats';
 import { PlaySettingsSheet } from './components/play/PlaySettingsSheet';
 import { PlayImporter } from './components/play/PlayImporter';
-import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
+import { Spline, Compass, Disc, LayoutGrid, ChevronLeft } from 'lucide-react';
 
 /**
  * Deferred UI.
@@ -1068,6 +1068,27 @@ export default function App() {
 
       {/* Frame-Per-Second Counter. Pro only — Play mode shows no telemetry. */}
       {uiMode === 'pro' && <FpsCounter uiScale={uiScale} />}
+
+      {/* The way back out of Pro.
+          The Advanced tools switch lives in the Play settings sheet, and Play
+          does not render in Pro — so turning Pro on was a one-way door with no
+          visible way home short of clearing site data. This is that door. */}
+      {uiMode === 'pro' && (
+        <button
+          type="button"
+          onClick={() => {
+            haptics.trigger('mode-switch');
+            setUiMode('play');
+          }}
+          className="fixed top-2 right-2 z-[2147483646] h-10 px-3.5 rounded-full
+            bg-sky-400 text-zinc-950 text-xs font-bold shadow-lg
+            flex items-center gap-1.5 active:scale-95 transition-transform"
+          title="Back to the simple screen"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Simple mode
+        </button>
+      )}
 
       {/* Floating Restore Buttons when Controllers are Hidden */}
       {uiMode === 'pro' && activeController === 'hidden' && (
