@@ -41,6 +41,7 @@ import { BrushSheet } from './components/play/BrushSheet';
 import { MagicFxSheet } from './components/play/MagicFxSheet';
 import { FirstRunOverlay } from './components/play/FirstRunOverlay';
 import { Toybox } from './components/play/Toybox';
+import { PlayStats } from './components/play/PlayStats';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -923,6 +924,7 @@ export default function App() {
               />
             }
           />
+          <PlayStats theme={theme} />
           <FirstRunOverlay onOpenToybox={() => setIsToyboxOpen(true)} theme={theme} />
           <Toybox
             isOpen={isToyboxOpen}

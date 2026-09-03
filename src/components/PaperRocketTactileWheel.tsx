@@ -30,6 +30,7 @@ import {
 import { SpatialMode, SubWheelMode, SpatialState, BrushSettings, Layer, LoadedModelInfo, TransformTargetScope, AccessibilityMode } from '../types';
 import { StudioEngine } from '../core/studioEngine';
 import { playHapticSound } from '../utils/audio';
+import { haptics } from '../utils/haptics';
 import { ThreeTrackball } from './ThreeTrackball';
 import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
 import { useUiMode } from '../core/uiModeStore';
@@ -783,6 +784,24 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   const ringLastAngle = useRef<number | null>(null);
   const [isRingTurning, setIsRingTurning] = useState<boolean>(false);
 
+  /**
+   * Detents on the rotation ring.
+   *
+   * A free-spinning ring is smooth but gives you nothing to aim at, so landing
+   * exactly on a quarter turn is guesswork. These make the common angles - every
+   * 45 degrees - behave like shallow notches: as you approach one, the ring
+   * starts giving back less than you put in, so it settles there on its own. Push
+   * past and it frees up again. Nothing is locked and nothing snaps, so a
+   * deliberate odd angle is still possible; the notch just makes the tidy answer
+   * the easy one.
+   *
+   * The angle we measure against is the rotation actually applied, not the raw
+   * finger angle, so the notches line up with how the object really sits.
+   */
+  const ringAppliedAngle = useRef<number>(0);
+  const ringDetentRef = useRef<number>(0);
+  const [ringInDetent, setRingInDetent] = useState<boolean>(false);
+
   const ringAngleAt = (e: React.PointerEvent): number | null => {
     const el = ringRef.current;
     if (!el) return null;
@@ -798,6 +817,8 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     e.preventDefault();
     e.stopPropagation();
     ringLastAngle.current = a;
+    ringAppliedAngle.current = 0;
+    ringDetentRef.current = 0;
     setIsRingTurning(true);
     engine?.beginTransform(targetScope);
     try {
@@ -819,6 +840,26 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     if (delta < -180) delta += 360;
     ringLastAngle.current = a;
 
+    // How far the angle we are heading for sits from the nearest notch.
+    const DETENT_EVERY = 45;
+    const CAPTURE_DEG = 9;
+    const MIN_PASS = 0.25; // right on a notch, only a quarter of your movement counts
+    const target = ringAppliedAngle.current + delta;
+    const off = ((target % DETENT_EVERY) + DETENT_EVERY) % DETENT_EVERY;
+    const distToDetent = Math.min(off, DETENT_EVERY - off);
+
+    const inDetent = distToDetent < CAPTURE_DEG;
+    // Ramp resistance smoothly from full stickiness at the notch to none at the
+    // edge of its pull, so there is no sudden step as you cross the boundary.
+    const resistance = inDetent ? MIN_PASS + (1 - MIN_PASS) * (distToDetent / CAPTURE_DEG) : 1;
+    delta *= resistance;
+
+    ringAppliedAngle.current += delta;
+    if (inDetent !== ringInDetent) setRingInDetent(inDetent);
+
+    // A tick as each notch goes by, stronger on the quarter turns.
+    haptics.checkAngleDetent(ringAppliedAngle.current, ringDetentRef, DETENT_EVERY);
+
     const rad = (delta * Math.PI) / 180;
     if (engine) {
       if (mode === '3d') {
@@ -836,6 +877,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     e.preventDefault();
     e.stopPropagation();
     setIsRingTurning(false);
+    setRingInDetent(false);
     ringLastAngle.current = null;
     try {
       ringRef.current?.releasePointerCapture(e.pointerId);
@@ -1215,8 +1257,12 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           >
             {/* Grip notches, so it reads as a thing you can twist. */}
             <div
-              className={`absolute inset-[6px] rounded-full border-2 border-dashed transition-colors duration-150 ${
-                isRingTurning ? 'border-sky-400/70' : 'border-white/12'
+              className={`absolute inset-[6px] rounded-full border-2 transition-all duration-100 ${
+                ringInDetent
+                  ? 'border-solid border-sky-300'
+                  : isRingTurning
+                    ? 'border-dashed border-sky-400/70'
+                    : 'border-dashed border-white/12'
               }`}
             />
           </div>
