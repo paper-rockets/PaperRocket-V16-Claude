@@ -8,7 +8,7 @@
 
 ## 0. Scope — read this first
 
-This app is a Feather3D-style painting tool: the user paints with a stylus onto a 3D model or a
+This app is a PaperRockets painting tool: the user paints with a stylus onto a 3D model or a
 flat sheet, then repositions it and keeps painting. Runs on Galaxy S25 Ultra, Galaxy S-series,
 and Tab S6 Lite.
 
@@ -259,6 +259,7 @@ Not part of this work; do not do these:
 - New components, new controller modes, phone-specific layouts
 - Renaming axis labels or other vocabulary changes
 
-*(A separate note: the `feather3d` entry in `launch.json` points at `E:\Z Feather3D II\Version 01`,
-which no longer exists, so browser preview for this project fails to start. Unrelated to this
-work, but worth fixing.)*
+*(A separate note: the stale external entry that used to be in `.claude/launch.json` is gone. The
+remaining entry declares port 8000 while `npm run dev` serves on 3000 — see setup step 2 of
+`ANTIGRAVITY_BUILD_PLAN.md`. Unrelated to this work, but worth fixing before any browser
+verification.)*

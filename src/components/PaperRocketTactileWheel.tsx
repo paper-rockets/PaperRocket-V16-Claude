@@ -26,15 +26,12 @@ import {
   SlidersHorizontal,
   X,
   Minus,
-  RotateCw,
 } from 'lucide-react';
 import { SpatialMode, SubWheelMode, SpatialState, BrushSettings, Layer, LoadedModelInfo, TransformTargetScope, AccessibilityMode } from '../types';
 import { StudioEngine } from '../core/studioEngine';
 import { playHapticSound } from '../utils/audio';
-import { haptics } from '../utils/haptics';
 import { ThreeTrackball } from './ThreeTrackball';
 import { NavigatorHeader } from './TransformNavigator/NavigatorHeader';
-import { OuterDegreeIndicatorRing } from './TransformNavigator/OuterDegreeIndicatorRing';
 
 export interface PaperRocketTactileWheelProps {
   engine?: StudioEngine | null;
@@ -67,9 +64,6 @@ export interface PaperRocketTactileWheelProps {
   onCopy?: () => void;
   onPaste?: () => void;
   clipboardCount?: number;
-  sensitivity?: number;
-  onSensitivityChange?: (s: number) => void;
-  theme?: 'light' | 'dark';
 }
 
 export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = ({
@@ -102,11 +96,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   onCopy,
   onPaste,
   clipboardCount = 0,
-  sensitivity = 0.5,
-  onSensitivityChange,
-  theme = 'dark',
 }) => {
-  const isLight = theme === 'light';
   // Mode state with internal fallback
   const [internalMode, setInternalMode] = useState<SpatialMode>('3d');
   const mode = controlledMode !== undefined ? controlledMode : internalMode;
@@ -179,12 +169,12 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
   // Position state with auto-clamping and localStorage persistence
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
-    const defaultWidth = 370;
-    const defaultHeight = 256;
+    const defaultWidth = 270;
+    const defaultHeight = 360;
     const screenW = typeof window !== 'undefined' ? window.innerWidth : 1200;
     const screenH = typeof window !== 'undefined' ? window.innerHeight : 800;
-    const defaultX = Math.max(12, screenW - defaultWidth - 20);
-    const defaultY = Math.max(12, screenH - defaultHeight - 24);
+    const defaultX = Math.max(12, Math.min(screenW - defaultWidth - 16, screenW - 280));
+    const defaultY = Math.max(12, Math.min(screenH - defaultHeight - 16, screenH - 420));
     
     try {
       const saved = localStorage.getItem('mody_tactile_wheel_coords');
@@ -204,65 +194,60 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   });
 
   const isDraggingCardRef = useRef<boolean>(false);
+  const dragCardStartRef = useRef<{ startX: number; startY: number; posX: number; posY: number }>({
+    startX: 0,
+    startY: 0,
+    posX: 0,
+    posY: 0,
+  });
 
   const handleCardDragStart = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    const isDragGrip =
-      target.id === 'navigator-drag-grip-handle' ||
-      target.closest('#navigator-drag-grip-handle') ||
-      target.closest('[aria-label="Drag to move navigator"]') ||
-      target.closest('[title="Drag to move navigator"]') ||
-      target.closest('#transform-navigator-header');
-
     if (
       target.tagName === 'BUTTON' ||
       target.closest('button') ||
       target.getAttribute('role') === 'button' ||
       target.closest('[role="button"]') ||
-      target.tagName === 'INPUT' ||
-      target.closest('input') ||
       target.id?.startsWith('handle-') ||
       target.closest('[id^="handle-"]') ||
       target.closest('#three-trackball-canvas') ||
-      target.closest('#paper-rocket-trackball-sphere') ||
-      target.closest('#paper-rocket-joystick-core') ||
-      target.closest('#paper-rocket-center-white-puck') ||
-      target.closest('[id^="petal-"]') ||
-      target.closest('#paper-rocket-rotation-ring') ||
-      target.closest('#paper-rocket-rotation-handle') ||
-      target.closest('#paper-rocket-rotation-axis-selector') ||
-      target.closest('#navigator-target-dropdown-panel') ||
-      target.closest('[role="listbox"]')
+      target.closest('#paperrocket-trackball-sphere') ||
+      target.closest('#paperrocket-joystick-core') ||
+      target.closest('#paperrocket-radial-dial') ||
+      target.closest('#transform-navigator-header')
     ) {
       return;
     }
 
-    if (!isDragGrip) {
-      return;
-    }
-
-    e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initPosX = position ? position.x : 0;
-    const initPosY = position ? position.y : 0;
-
     isDraggingCardRef.current = true;
+    dragCardStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: position ? position.x : 0,
+      posY: position ? position.y : 0,
+    };
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (!isDraggingCardRef.current) return;
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      const maxX = Math.max(0, window.innerWidth - 80);
-      const maxY = Math.max(0, window.innerHeight - 60);
-      const newX = Math.min(maxX, Math.max(0, initPosX + dx));
-      const newY = Math.min(maxY, Math.max(0, initPosY + dy));
+      const dx = moveEvent.clientX - dragCardStartRef.current.startX;
+      const dy = moveEvent.clientY - dragCardStartRef.current.startY;
+      const maxX = Math.max(10, window.innerWidth - 275);
+      const maxY = Math.max(10, window.innerHeight - 80);
+      const newX = Math.min(maxX, Math.max(10, dragCardStartRef.current.posX + dx));
+      const newY = Math.min(maxY, Math.max(10, dragCardStartRef.current.posY + dy));
       setPosition({ x: newX, y: newY });
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (upEvent: PointerEvent) => {
       if (isDraggingCardRef.current) {
         isDraggingCardRef.current = false;
+        try {
+          (e.currentTarget as HTMLElement).releasePointerCapture(upEvent.pointerId);
+        } catch (_) {}
         setPosition((curr) => {
           if (curr) {
             try {
@@ -274,135 +259,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       }
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-  };
-
-  // Rotation Ring state & handlers with 45-degree quadrant slowdown
-  const [isRotateRingDragging, setIsRotateRingDragging] = useState(false);
-  const [rotateRingAngle, setRotateRingAngle] = useState(0);
-  const [rotationAxis, setRotationAxis] = useState<'x' | 'y' | 'z'>('y');
-  const [snappedMilestone, setSnappedMilestone] = useState<number | null>(null);
-  const rotateRingLastAngleRef = useRef(0);
-  const rotateRingDetentRef = useRef(0);
-  const rotateRingLastSnapRef = useRef<number | null>(null);
-  const rotateRingCenterRef = useRef<{ cx: number; cy: number }>({ cx: 0, cy: 0 });
-
-  const handleRotateRingPointerDown = (e: React.PointerEvent<HTMLDivElement | SVGSVGElement>) => {
-    if (isLocked) {
-      haptics.trigger('lock');
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    rotateRingCenterRef.current = {
-      cx: rect.left + rect.width / 2,
-      cy: rect.top + rect.height / 2,
-    };
-
-    const dx = e.clientX - rotateRingCenterRef.current.cx;
-    const dy = e.clientY - rotateRingCenterRef.current.cy;
-    let angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-    if (angle < 0) angle += 360;
-
-    rotateRingLastAngleRef.current = angle;
-    rotateRingDetentRef.current = angle;
-    rotateRingLastSnapRef.current = null;
-    setIsRotateRingDragging(true);
-    haptics.trigger('medium');
-    playHapticSound('click', soundEnabled);
-
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const curDx = moveEvent.clientX - rotateRingCenterRef.current.cx;
-      const curDy = moveEvent.clientY - rotateRingCenterRef.current.cy;
-      let rawAngle = (Math.atan2(curDy, curDx) * 180) / Math.PI + 90;
-      if (rawAngle < 0) rawAngle += 360;
-
-      let rawDelta = rawAngle - rotateRingLastAngleRef.current;
-      if (rawDelta > 180) rawDelta -= 360;
-      if (rawDelta < -180) rawDelta += 360;
-
-      rotateRingLastAngleRef.current = rawAngle;
-
-      // 45-degree quadrant slowdown & magnetic snapping calculation
-      const normAngle = ((rawAngle % 360) + 360) % 360;
-      const nearest45 = Math.round(normAngle / 45) * 45;
-      let distTo45 = normAngle - nearest45;
-      if (distTo45 > 180) distTo45 -= 360;
-      if (distTo45 < -180) distTo45 += 360;
-
-      const absDist = Math.abs(distTo45);
-      const slowdownZone = 6.0; // 6-degree slowdown zone around each 45° & 90° quadrant mark
-      const lockZone = 1.8;     // 1.8-degree magnetic snap threshold
-
-      let effectiveD = rawDelta;
-      let currentMilestone: number | null = null;
-
-      if (absDist < slowdownZone) {
-        // Apply smooth magnetic resistance & slowdown curve inside 45° quadrant
-        const damping = Math.max(0.18, Math.pow(absDist / slowdownZone, 1.4));
-        effectiveD = rawDelta * damping;
-
-        if (absDist < lockZone) {
-          const milestoneDeg = (nearest45 % 360 + 360) % 360;
-          currentMilestone = milestoneDeg;
-
-          if (rotateRingLastSnapRef.current !== milestoneDeg) {
-            rotateRingLastSnapRef.current = milestoneDeg;
-            haptics.trigger('snap');
-            playHapticSound('snap', soundEnabled);
-          }
-        }
-      } else {
-        if (rotateRingLastSnapRef.current !== null && Math.abs(normAngle - rotateRingLastSnapRef.current) > slowdownZone) {
-          rotateRingLastSnapRef.current = null;
-        }
-      }
-
-      setSnappedMilestone(currentMilestone);
-      setRotateRingAngle((prev) => (prev + effectiveD) % 360);
-
-      const sens = (sensitivity || 0.5) * 2.0;
-      const effectiveDelta = effectiveD * sens;
-
-      // Haptic detent feedback every 15 degrees
-      haptics.checkAngleDetent(rawAngle, rotateRingDetentRef, 15);
-
-      if (engine) {
-        engine.rotateWorldAxis(rotationAxis, (effectiveDelta * Math.PI) / 180, targetScope, isLocked);
-      }
-
-      onUpdateSpatial((prev) => {
-        if (rotationAxis === 'x') {
-          return { ...prev, pitch: Math.max(-85, Math.min(85, prev.pitch + effectiveDelta)) };
-        } else if (rotationAxis === 'y') {
-          return { ...prev, yaw: (prev.yaw + effectiveDelta) % 360 };
-        } else {
-          return { ...prev, roll: (prev.roll + effectiveDelta) % 360 };
-        }
-      });
-    };
-
-    const handlePointerUp = () => {
-      setIsRotateRingDragging(false);
-      setSnappedMilestone(null);
-      rotateRingLastSnapRef.current = null;
-      haptics.trigger('light');
-      playHapticSound('pop', soundEnabled);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
   };
 
   // Auto-clamp on window resize to ensure widget is always on screen
@@ -603,7 +463,6 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   const joystickLastPos = useRef({ x: 0, y: 0, time: 0 });
   const joystickVelocity = useRef({ x: 0, y: 0 });
   const joystickFrictionRef = useRef<number | null>(null);
-  const lastTickDistRef = useRef<number>(0);
 
   // Helper to safely clamp spatial state within bounds
   const clampSpatial = useCallback((state: SpatialState): SpatialState => {
@@ -641,13 +500,18 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     if (isRollingBall) return `Turning 3D • Yaw: ${Math.round(spatialState.yaw)}° Pitch: ${Math.round(spatialState.pitch)}°`;
     if (isDialDragging) return `Dial Size • ${spatialState.brushSize} / 50`;
 
-    if (mode === 'tactile_ball') {
-      return hasWebGPU ? 'Rotate (WebGPU) • Roll the ball' : 'Rotate • Roll the ball to turn';
+    if (subMode === 'joystick') {
+      return mode === '3d'
+        ? '3D World Space • Drag white ball to move'
+        : 'Flat Screen • Drag white ball to pan';
+    }
+    if (subMode === 'ball') {
+      return hasWebGPU ? '3D Sphere (WebGPU) • Roll the ball' : '3D Sphere • Roll the ball to turn';
     }
     if (subMode === 'dial') {
       return 'Wheel Dial • Slide circle to change size';
     }
-    return 'Move • Drag center puck to pan, petals for X/Y/Z';
+    return 'Tactile Spatial Wheel';
   };
 
   // Joystick pointer handlers with normalized, pixel-independent coordinate math
@@ -693,11 +557,10 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       if (axis === 'y' || axis === 'z') normU = 0;
       if (axis === 'x') normV = 0;
 
-      // Visual spring offset (Extended travel reach into 230px circle)
-      const maxVisualTravel = isBiggerUI ? 84 : 68;
+      // Visual spring offset
+      const maxVisualTravel = isBiggerUI ? 48 : 30;
       rawX.set(normU * maxVisualTravel);
       rawY.set(normV * maxVisualTravel);
-      lastTickDistRef.current = normDist;
     }
   };
 
@@ -712,41 +575,29 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     const dist = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx);
 
+    // Dynamic Haptic Click on unit threshold edge
+    if (dist >= radius * 0.82 && Math.hypot(rawX.get(), rawY.get()) < (isBiggerUI ? 47 : 29)) {
+      playHapticSound('click', soundEnabled);
+    }
+
     // Compute unit-disk normalized coordinate [0, 1] regardless of screen resolution or UI size
     const normDist = Math.min(1.0, dist / (radius * 0.82));
-
-    // Distance-threshold tick clicks during drag (every ~10mm / 0.2 normDist)
-    const currentDistStep = Math.floor(normDist / 0.2);
-    const lastDistStep = Math.floor(lastTickDistRef.current / 0.2);
-    if (currentDistStep !== lastDistStep && normDist > 0.05) {
-      playHapticSound('tick', soundEnabled);
-      lastTickDistRef.current = normDist;
-    }
-
-    // Dynamic Haptic Click on unit threshold edge
-    if (normDist >= 0.95 && lastTickDistRef.current < 0.95) {
-      playHapticSound('click', soundEnabled);
-      lastTickDistRef.current = normDist;
-    }
-
     let normU = Math.cos(angle) * normDist;
     let normV = Math.sin(angle) * normDist;
 
     if (activeAxis === 'x') normV = 0;
     if (activeAxis === 'y' || activeAxis === 'z') normU = 0;
 
-    // Visual puck displacement (Extended travel)
-    const maxVisualTravel = isBiggerUI ? 84 : 68;
+    // Visual puck displacement
+    const maxVisualTravel = isBiggerUI ? 48 : 30;
     rawX.set(normU * maxVisualTravel);
     rawY.set(normV * maxVisualTravel);
 
     // Normalized frame velocity tracking (normalized displacement per ms)
     const now = performance.now();
     const dt = Math.max(1, now - joystickLastPos.current.time);
-    const stepDx = e.clientX - joystickLastPos.current.x;
-    const stepDy = e.clientY - joystickLastPos.current.y;
-    const moveDx = stepDx / radius;
-    const moveDy = stepDy / radius;
+    const moveDx = (e.clientX - joystickLastPos.current.x) / radius;
+    const moveDy = (e.clientY - joystickLastPos.current.y) / radius;
 
     const currentVx = (moveDx / dt) * 16.67;
     const currentVy = (moveDy / dt) * 16.67;
@@ -759,41 +610,63 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
     activeVelocityRef.current = currentSpeed;
 
     // Continuous, pixel-independent rate delta calculation
-    // Snappy linear response curve with minimal deadzone for instant movement initiation
-    const deadzone = 0.015;
+    // Deadzone eliminates sub-pixel hand jitter at resting origin
+    const deadzone = 0.035;
     const effectiveMag = Math.max(0, (normDist - deadzone) / (1 - deadzone));
-    const responseMag = effectiveMag;
+    // Soft quadratic response curve for micro-precision near center and smooth acceleration at edge
+    const responseMag = Math.pow(effectiveMag, 1.28);
 
     const dirU = normDist > 0 ? (normU / normDist) * responseMag : 0;
     const dirV = normDist > 0 ? (normV / normDist) * responseMag : 0;
 
-    const sens = (sensitivity || 0.5) * 4.0;
-    // Highly responsive translation vector (combines direct mouse delta + directional displacement)
-    const transX = (stepDx * 0.85 + dirU * 6.0) * sens;
-    const transY = (stepDy * 0.85 + dirV * 6.0) * sens;
+    const speedScale = mode === '3d' ? 3.2 : 2.4;
+    const deltaX = dirU * speedScale;
+    const deltaY = -dirV * speedScale;
 
-    if (activeAxis === 'z') {
-      const deltaZ = (-stepDy * 0.45 - dirV * 4.0) * sens;
+    if (activeAxis === 'z' || (mode === '3d' && activeAxis === 'z')) {
+      const deltaZ = -dirV * speedScale;
       onUpdateSpatial((prev) => clampSpatial({ ...prev, z: prev.z + deltaZ }));
+      const dispZ = Math.round(-normV * 50);
+      setDragValueLabel(`${dispZ > 0 ? '+' : ''}${dispZ}mm Z`);
+
       if (engine) {
-        engine.translateAxis3D('z', deltaZ * 0.04, targetScope);
+        if (mode === '3d') {
+          engine.translateAxis3D('z', -dirV * 0.008, targetScope);
+        } else {
+          engine.translateScreenSpace(0, -dirV * 2.0, targetScope, isLocked);
+        }
       }
     } else if (activeAxis === 'x') {
-      const deltaX = (stepDx * 0.45 + dirU * 4.0) * sens;
       onUpdateSpatial((prev) => clampSpatial({ ...prev, x: prev.x + deltaX }));
+      const dispX = Math.round(normU * 50);
+      setDragValueLabel(`${dispX > 0 ? '+' : ''}${dispX}mm X`);
+
       if (engine) {
-        engine.translateAxis3D('x', deltaX * 0.04, targetScope);
+        if (mode === '3d') {
+          engine.translateAxis3D('x', dirU * 0.008, targetScope);
+        } else {
+          engine.translateScreenSpace(dirU * 2.0, 0, targetScope, isLocked);
+        }
       }
     } else if (activeAxis === 'y') {
-      const deltaY = (-stepDy * 0.45 - dirV * 4.0) * sens;
       onUpdateSpatial((prev) => clampSpatial({ ...prev, y: prev.y + deltaY }));
+      const dispY = Math.round(-normV * 50);
+      setDragValueLabel(`${dispY > 0 ? '+' : ''}${dispY}mm Y`);
+
       if (engine) {
-        engine.translateAxis3D('y', deltaY * 0.04, targetScope);
+        if (mode === '3d') {
+          engine.translateAxis3D('y', -dirV * 0.008, targetScope);
+        } else {
+          engine.translateScreenSpace(0, dirV * 2.0, targetScope, isLocked);
+        }
       }
     } else {
-      onUpdateSpatial((prev) => clampSpatial({ ...prev, x: prev.x + transX, y: prev.y - transY }));
+      onUpdateSpatial((prev) => clampSpatial({ ...prev, x: prev.x + deltaX, y: prev.y + deltaY }));
+      const disp = Math.round(normDist * 50);
+      setDragValueLabel(`${disp}mm`);
+
       if (engine) {
-        engine.translateScreenSpace(transX, transY, targetScope, isLocked);
+        engine.translateScreenSpace(dirU * 2.0, dirV * 2.0, targetScope, isLocked);
       }
     }
   };
@@ -805,7 +678,6 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       setIsDraggingJoystick(false);
       setActiveAxis('all');
       setDragValueLabel(null);
-      lastTickDistRef.current = 0;
       playHapticSound('snap', soundEnabled);
       engine?.endTransform();
 
@@ -845,7 +717,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         );
 
         if (engine) {
-          engine.translateScreenSpace(vx * 1.2, -vy * 1.2, targetScope, isLocked);
+          engine.translateScreenSpace(vx * 0.8, -vy * 0.8, targetScope, isLocked);
         }
 
         joystickFrictionRef.current = requestAnimationFrame(stepJoystickFriction);
@@ -1031,7 +903,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
   if (!isOpen) {
     return (
       <motion.button
-        id="paper-rocket-mini-trigger"
+        id="paperrocket-mini-trigger"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         whileHover={{ scale: 1.08 }}
@@ -1044,19 +916,15 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           playHapticSound('pop', soundEnabled);
           setIsOpen(true);
         }}
-        className={`fixed z-40 px-3.5 py-2 rounded-2xl ${
-          isLight
-            ? 'bg-white/95 border-neutral-200 text-neutral-900 shadow-[0_12px_32px_rgba(0,0,0,0.12)]'
-            : 'bg-[#14151a]/95 border-white/[0.12] text-white shadow-[0_12px_32px_rgba(0,0,0,0.6)]'
-        } backdrop-blur-2xl border flex items-center gap-2 cursor-pointer group select-none`}
+        className="fixed z-40 px-3.5 py-2 rounded-2xl bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.12] shadow-[0_12px_32px_rgba(0,0,0,0.6)] flex items-center gap-2 text-white cursor-pointer group select-none"
         title="Restore Tactile Wheel"
       >
-        <Disc className="w-4 h-4 text-sky-500" />
-        <span className={`text-xs font-semibold ${isLight ? 'text-neutral-800' : 'text-neutral-200'}`}>Tactile Wheel</span>
+        <Disc className="w-4 h-4 text-sky-400" />
+        <span className="text-xs font-semibold text-neutral-200">Tactile Wheel</span>
         <div className="flex items-center gap-0.5 ml-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
-          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-500 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
+          <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-sky-400 transition-colors" />
         </div>
       </motion.button>
     );
@@ -1064,40 +932,55 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
   return (
     <aside
-      id="paper-rocket-wheel-root"
+      id="paperrocket-wheel-root"
       role="region"
       aria-label="Tactile Spatial Controller Widget"
+      onPointerDown={handleCardDragStart}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         transform: `scale(${(uiScale || 1.0) * scaleFactor})`,
         transformOrigin: 'top left',
       }}
-      className={`fixed z-40 rounded-[26px] ${
-        isLight
-          ? 'bg-white/95 border-neutral-200/90 text-neutral-800 shadow-[0_20px_45px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)]'
-          : 'bg-[#14151a]/95 border-white/[0.08] text-white shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)]'
-      } backdrop-blur-2xl border overflow-visible flex flex-row items-center touch-none select-none ${className}`}
+      className={`fixed z-40 w-[264px] sm:w-[268px] ${showHiddenPhysicsPanel ? 'min-h-[440px]' : ''} rounded-[24px] bg-[#14151a]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)] overflow-hidden flex flex-col touch-none cursor-grab active:cursor-grabbing select-none pb-2 ${className}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onWheel={(e) => {
-        if (e.ctrlKey || e.metaKey || e.altKey) {
-          e.preventDefault();
-          e.stopPropagation();
-          const delta = -Math.sign(e.deltaY) * 0.05;
-          const next = Math.min(1.4, Math.max(0.55, Math.round((scaleFactor + delta) * 100) / 100));
-          setScaleFactor(next);
-          try {
-            localStorage.setItem('mody_tactile_scale', next.toString());
-          } catch (_) {}
-        }
-      }}
     >
-      {/* Left: Main Paper Rocket-Inspired Tactile Circular Disc Body */}
-      <div id="paper-rocket-wheel-body" className="overflow-hidden flex items-center justify-center p-2 relative shrink-0">
+      {/* Header Bar with Segmented Controls & Copy/Paste actions matching Left Navigator */}
+      <NavigatorHeader
+        mode={mode}
+        onModeChange={(m) => onModeChange(m as SpatialMode)}
+        tabs={[
+          { id: '2d', label: 'Flat Screen' },
+          { id: '3d', label: '3D World' },
+        ]}
+        isLocked={isLocked}
+        onLockToggle={handleLockToggle}
+        onReset={onReset || (() => {})}
+        isCollapsed={false}
+        onCollapseToggle={() => {}}
+        onClose={onClose}
+        targetName={activeTargetName}
+        layers={layers}
+        activeLayerId={activeLayerId}
+        onSelectLayer={onSelectLayer}
+        models={models}
+        activeModelId={activeModelId}
+        onSelectModel={onSelectModel}
+        targetScope={targetScope}
+        onSelectTargetScope={onSelectTargetScope}
+        accessibilityMode={accessibilityMode}
+        onAccessibilityModeToggle={handleAccessibilityToggle}
+        onCopy={onCopy}
+        onPaste={onPaste}
+        clipboardCount={clipboardCount}
+      />
+
+      {/* Main PaperRockets Tactile Circular Disc Body */}
+      <div id="paperrocket-wheel-body" className="overflow-hidden flex flex-col relative px-2 py-2 items-center justify-center">
         <motion.div
-          id="paper-rocket-circular-wheel"
+          id="paperrocket-circular-wheel"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           onPointerDown={(e) => {
@@ -1112,174 +995,148 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
           onPointerCancel={() => {
             cancelLongPressDetection();
           }}
-          className={`relative ${wheelSizeClass} rounded-full ${
-            isLight
-              ? 'bg-gradient-to-b from-[#ffffff] to-[#eef0f4] border-neutral-300 shadow-[0_20px_45px_rgba(0,0,0,0.08),inset_0_1px_2px_rgba(255,255,255,0.95)]'
-              : 'bg-[#18181b]/95 border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)]'
-          } backdrop-blur-2xl border flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
+          className={`relative ${wheelSizeClass} rounded-full bg-[#18181b]/95 backdrop-blur-2xl border border-neutral-800 shadow-[0_25px_60px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] flex items-center justify-center touch-none overflow-hidden transition-all duration-200`}
         >
-        {/* Inner Surface with Velocity-Based CSS Vibration */}
+        {/* Inner Surface with Velocity-Based CSS Vibration (Preventing outer button displacement glitches) */}
         <div
-          id="paper-rocket-wheel-surface"
+          id="paperrocket-wheel-surface"
           style={{
             transform: `translate3d(${vibration.x}px, ${vibration.y}px, 0) rotate(${vibration.rot}deg)`,
           }}
           className="absolute inset-0 rounded-full flex items-center justify-center pointer-events-none"
         >
+          {/* Dynamic Blue Active Fill (Seen in video when dragging) */}
+          <AnimatePresence>
+            {(isDraggingJoystick || isRollingBall) && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#1e3a8a] via-[#2563eb] to-[#3b82f6] opacity-90 transition-colors pointer-events-none"
+              />
+            )}
+          </AnimatePresence>
         </div>
 
+        {/* Outer Ring Navigation Buttons & Mode Changers (with stopPropagation) */}
+        {/* Top Arc Pill (Switch to Dial / Step) */}
+        <motion.button
+          id="submode-dial-pill"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            playHapticSound('click', soundEnabled);
+            setSubMode(subMode === 'dial' ? 'joystick' : 'dial');
+          }}
+          className={`absolute top-3 z-30 w-11 h-6 rounded-full border flex items-center justify-center transition-all ${
+            subMode === 'dial'
+              ? 'bg-white text-neutral-950 border-white shadow-[0_0_12px_rgba(255,255,255,0.6)]'
+              : 'bg-neutral-800/80 text-neutral-400 border-neutral-700/60 hover:text-white'
+          }`}
+          title="Number Scrubber Dial"
+        >
+          <div className="w-4 h-1.5 rounded-full bg-current opacity-80" />
+        </motion.button>
+
+        {/* Right Arc Pill (Switch to 3D Sphere Roll) */}
+        <motion.button
+          id="submode-ball-pill"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            playHapticSound('click', soundEnabled);
+            setSubMode(subMode === 'ball' ? 'joystick' : 'ball');
+          }}
+          className={`absolute right-3 z-30 w-6 h-11 rounded-full border flex items-center justify-center transition-all ${
+            subMode === 'ball'
+              ? 'bg-white text-neutral-950 border-white shadow-[0_0_12px_rgba(255,255,255,0.6)]'
+              : 'bg-neutral-800/80 text-neutral-400 border-neutral-700/60 hover:text-white'
+          }`}
+          title="3D Sphere Orientation Roll"
+        >
+          <div className="w-1.5 h-4 rounded-full bg-current opacity-80" />
+        </motion.button>
+
+        {/* Left Arc Button (Quick Recenter) */}
+        <motion.button
+          id="quick-recenter-pill"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            playHapticSound('snap', soundEnabled);
+            onReset();
+          }}
+          className="absolute left-3 z-30 w-6 h-11 rounded-full bg-neutral-800/80 hover:bg-neutral-700 border border-neutral-700/60 text-neutral-400 hover:text-white flex items-center justify-center transition-all"
+          title="Recenter to Origin"
+        >
+          <RotateCcw className="w-3 h-3" />
+        </motion.button>
+
         {/* ---------------------------------------------------- */}
-        {/* CENTER INTERACTIVE CORE                                */}
+        {/* CENTER INTERACTIVE CORE: 3 CHILD-SIMPLE TOY MODES     */}
         {/* ---------------------------------------------------- */}
 
-        {/* 1. JOYSTICK MODE (Move: Pan & 3D Axes) with Concentric Rotation Ring */}
-        {mode !== 'tactile_ball' && (
-          <>
-            {/* Fixed Outer Ring Degree Indicators (0, 45, 90, 135, 180, 225, 270, 315 degrees) */}
-            <OuterDegreeIndicatorRing
-              theme={theme}
-              size={isBiggerUI ? 250 : 230}
-              highlightAngle={snappedMilestone}
-            />
-
-            {/* Interactive Outer Rotation Ring */}
-            <div
-              id="paper-rocket-rotation-ring"
-              onPointerDown={handleRotateRingPointerDown}
-              className={`absolute ${
-                isBiggerUI ? 'w-[214px] h-[214px]' : 'w-[196px] h-[196px]'
-              } rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing z-10 select-none touch-none`}
-              title={`Drag ring around center to rotate model (${rotationAxis.toUpperCase()}-Axis: ${rotationAxis === 'y' ? 'Turntable / Yaw' : rotationAxis === 'x' ? 'Pitch / Tilt' : 'Roll / Screen'})`}
-              aria-label={`Rotation ring - drag to rotate model around ${rotationAxis.toUpperCase()}-axis`}
-            >
-              {/* Rotating Pip Indicator */}
-              <div
-                className="absolute inset-0 rounded-full flex items-center justify-center transition-transform duration-75 pointer-events-none"
-                style={{ transform: `rotate(${rotateRingAngle}deg)` }}
-              >
-                {/* Dedicated Rotation Handle Grip Pip with Rotate Icon & Snap Highlight */}
-                <div
-                  id="paper-rocket-rotation-handle"
-                  className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 ${
-                    isBiggerUI ? 'w-6 h-6' : 'w-5 h-5'
-                  } rounded-full border shadow-md flex items-center justify-center transition-all ${
-                    snappedMilestone !== null
-                      ? isLight
-                        ? 'bg-emerald-500 text-white border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.7)] scale-110'
-                        : 'bg-emerald-400 text-zinc-950 border-emerald-300 shadow-[0_0_16px_rgba(52,211,153,0.9)] scale-110'
-                      : isRotateRingDragging
-                      ? isLight
-                        ? 'bg-white text-neutral-900 border-neutral-400 shadow-[0_0_12px_rgba(0,0,0,0.18)] scale-105'
-                        : 'bg-white text-zinc-950 border-white shadow-[0_0_14px_rgba(255,255,255,0.8)] scale-105'
-                      : isLight
-                      ? 'bg-white text-neutral-700 border-neutral-300 shadow-sm hover:bg-neutral-100 hover:text-neutral-950'
-                      : 'bg-[#27272a] text-zinc-300 border-white/20 hover:bg-[#3f3f46] hover:text-white'
-                  }`}
-                  title={`${rotationAxis.toUpperCase()}-Axis Rotation Handle - Drag around dial to rotate model`}
-                >
-                  <RotateCw className={`${isBiggerUI ? 'w-3 h-3' : 'w-2.5 h-2.5'} stroke-[2.5]`} />
-                </div>
-              </div>
-
-              {/* Recessed Ring Track Border */}
-              <div
-                className={`absolute inset-0 rounded-full border transition-colors pointer-events-none ${
-                  isRotateRingDragging
-                    ? isLight
-                      ? 'border-emerald-500/40 shadow-[inset_0_0_8px_rgba(16,185,129,0.15)]'
-                      : 'border-white/40 shadow-[inset_0_0_12px_rgba(255,255,255,0.15)]'
-                    : isLight
-                    ? 'border-neutral-300/60'
-                    : 'border-white/10'
-                }`}
-              />
-            </div>
-
-            <div
-              ref={joystickContainerRef}
-              id="paper-rocket-joystick-core"
-              onPointerDown={(e) => handleJoystickDown(e, 'all')}
-              onPointerMove={handleJoystickMove}
-              onPointerUp={handleJoystickUp}
-              onPointerCancel={handleJoystickUp}
-              className={`relative ${
-                isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
-              } rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing z-20`}
-            >
-            {/* 4 Directional Symmetrical Tactile Petals */}
+        {/* MODE 1: ELASTIC JOYSTICK & 3-AXIS PETALS */}
+        {subMode === 'joystick' && (
+          <div
+            ref={joystickContainerRef}
+            id="paperrocket-joystick-core"
+            onPointerDown={(e) => handleJoystickDown(e, 'all')}
+            onPointerMove={handleJoystickMove}
+            onPointerUp={handleJoystickUp}
+            onPointerCancel={handleJoystickUp}
+            className={`relative ${
+              isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
+            } rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing z-20`}
+          >
+            {/* Colorful 3-Axis Petals (persisted in DOM to avoid pointer-capture unmount cancellation) */}
             <div
               className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 ${
                 isDraggingJoystick ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
               }`}
             >
-              {/* Top Petal (Elevation +Y) */}
+              {/* Top/Green Petal (Elevation Y) */}
               <button
-                id="petal-top-y"
+                id="petal-green-y"
                 onPointerDown={(e) => handleJoystickDown(e, 'y')}
                 className={`absolute ${
                   isBiggerUI ? '-top-1.5 w-6 h-10' : '-top-1 w-5 h-8'
-                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
-                  isLight
-                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
-                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
-                }`}
-                title="Move +Y (Elevation)"
-              >
-                <div className={`w-1 h-2 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
-              </button>
+                } rounded-full bg-[#22c55e] hover:brightness-125 transition-all shadow-md cursor-pointer`}
+                title="Move Y (Elevation)"
+              />
 
-              {/* Bottom Petal (Depth Z) */}
+              {/* Left/Pink Petal (Lateral X) */}
               <button
-                id="petal-bottom-z"
-                onPointerDown={(e) => handleJoystickDown(e, 'z')}
-                className={`absolute ${
-                  isBiggerUI ? '-bottom-1.5 w-6 h-10' : '-bottom-1 w-5 h-8'
-                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
-                  isLight
-                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
-                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
-                }`}
-                title="Move Z (Depth)"
-              >
-                <div className={`w-1 h-2 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
-              </button>
-
-              {/* Left Petal (Lateral -X) */}
-              <button
-                id="petal-left-x"
+                id="petal-pink-x"
                 onPointerDown={(e) => handleJoystickDown(e, 'x')}
                 className={`absolute ${
                   isBiggerUI ? '-left-1.5 w-10 h-6' : '-left-1 w-8 h-5'
-                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
-                  isLight
-                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
-                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
-                }`}
-                title="Move -X (Lateral)"
-              >
-                <div className={`w-2 h-1 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
-              </button>
+                } rounded-full bg-[#ec4899] hover:brightness-125 transition-all shadow-md cursor-pointer`}
+                title="Move X (Lateral)"
+              />
 
-              {/* Right Petal (Lateral +X) */}
-              <button
-                id="petal-right-x"
-                onPointerDown={(e) => handleJoystickDown(e, 'x')}
-                className={`absolute ${
-                  isBiggerUI ? '-right-1.5 w-10 h-6' : '-right-1 w-8 h-5'
-                } rounded-full border transition-all cursor-pointer flex items-center justify-center ${
-                  isLight
-                    ? 'bg-white/95 hover:bg-white border-neutral-300/80 text-neutral-700 shadow-sm'
-                    : 'bg-[#222328] hover:bg-[#2f3138] border-white/10 text-zinc-300 shadow-md'
-                }`}
-                title="Move +X (Lateral)"
-              >
-                <div className={`w-2 h-1 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-500'}`} />
-              </button>
+              {/* Right/Blue Petal (Depth Z in 3D mode) */}
+              {mode === '3d' && (
+                <button
+                  id="petal-blue-z"
+                  onPointerDown={(e) => handleJoystickDown(e, 'z')}
+                  className={`absolute ${
+                    isBiggerUI ? '-right-1.5 w-10 h-6' : '-right-1 w-8 h-5'
+                  } rounded-full bg-[#3b82f6] hover:brightness-125 transition-all shadow-md cursor-pointer`}
+                  title="Move Z (Depth)"
+                />
+              )}
             </div>
 
-            {/* Sleek Tactile Center Puck */}
+            {/* Elastic White Center Puck with 3D Dome Shading */}
             <motion.div
-              id="paper-rocket-center-white-puck"
+              id="paperrocket-center-white-puck"
               style={{
                 x: springX,
                 y: springY,
@@ -1287,66 +1144,45 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
               animate={{
                 scale: isDraggingJoystick ? 1.08 : 1,
                 boxShadow: isDraggingJoystick
-                  ? isLight
-                    ? '0 0 20px rgba(16,185,129,0.35), 0 8px 18px rgba(0,0,0,0.12)'
-                    : '0 0 25px rgba(255, 255, 255, 0.25), 0 12px 28px rgba(0,0,0,0.8)'
-                  : isLight
-                  ? '0 4px 14px rgba(0,0,0,0.1), inset 0 1px 1px rgba(255,255,255,0.9), inset 0 -1px 2px rgba(0,0,0,0.06)'
-                  : '0 8px 20px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5)',
+                  ? '0 0 35px rgba(255, 255, 255, 0.9), 0 12px 28px rgba(0,0,0,0.6)'
+                  : '0 8px 20px rgba(0,0,0,0.45), inset 0 2px 2px rgba(255,255,255,0.8), inset 0 -3px 6px rgba(0,0,0,0.2)',
               }}
               className={`relative z-20 ${
                 isBiggerUI ? 'w-16 h-16 min-w-[48px] min-h-[48px]' : 'w-12 h-12 min-w-[40px] min-h-[40px]'
-              } rounded-full ${
-                isLight
-                  ? 'bg-gradient-to-b from-white via-[#f0f0f3] to-[#e4e4e8] border-neutral-300 text-neutral-800'
-                  : 'bg-gradient-to-b from-[#3f3f46] via-[#27272a] to-[#18181b] border-white/20 text-white'
-              } border font-bold flex items-center justify-center shadow-lg cursor-grab active:cursor-grabbing select-none`}
+              } rounded-full bg-[radial-gradient(circle_at_35%_30%,#ffffff_0%,#f8fafc_50%,#cbd5e1_100%)] border border-white/60 text-neutral-900 font-bold flex items-center justify-center text-xs shadow-xl cursor-grab active:cursor-grabbing select-none`}
             >
-              {/* Concentric Tactile Depression Rings */}
-              <div
-                className={`w-[72%] h-[72%] rounded-full ${
-                  isLight
-                    ? 'bg-[#e8e8ed] border-neutral-200 shadow-[inset_0_1px_3px_rgba(0,0,0,0.06)]'
-                    : 'bg-[#18181b] border-white/10 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]'
-                } border flex items-center justify-center`}
-              >
-                <div
-                  className={`w-[50%] h-[50%] rounded-full ${
-                    isLight ? 'bg-white border-neutral-300/70' : 'bg-[#27272a] border-white/10'
-                  } border flex items-center justify-center`}
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-neutral-400' : 'bg-zinc-400'} shadow-sm`} />
+              {/* Dynamic metric label inside puck like in the video */}
+              {isDraggingJoystick && dragValueLabel ? (
+                <span className="text-[10px] sm:text-[11px] font-extrabold tracking-tight text-neutral-950 animate-pulse">
+                  {dragValueLabel}
+                </span>
+              ) : (
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-neutral-900/20 shadow-inner flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-neutral-900 shadow-sm" />
                 </div>
-              </div>
+              )}
             </motion.div>
           </div>
-          </>
         )}
 
-        {/* 2. TACTILE BALL MODE: Pure 3D Trackball */}
-        {mode === 'tactile_ball' && (
+        {/* MODE 2: ROLLING 3D TOY SPHERE (Real Three.js WebGPU/WebGL 3D Sphere Trackball) */}
+        {subMode === 'ball' && (
           <div
-            id="paper-rocket-trackball-sphere"
+            id="paperrocket-trackball-sphere"
             className={`relative ${
-              isBiggerUI ? 'w-[214px] h-[214px]' : 'w-[196px] h-[196px]'
-            } rounded-full ${
-              isLight
-                ? 'bg-gradient-to-b from-slate-100 to-slate-200 border border-neutral-300 shadow-[inset_0_4px_20px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.05)]'
-                : 'bg-[#121214] border border-neutral-800 shadow-[inset_0_4px_24px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.06)]'
-            } flex items-center justify-center overflow-hidden z-20`}
+              isBiggerUI ? 'w-40 h-40' : 'w-28 h-28'
+            } rounded-full bg-[#121214] border-2 border-neutral-800 shadow-[inset_0_4px_16px_rgba(0,0,0,0.8)] flex items-center justify-center overflow-hidden z-20`}
           >
             <ThreeTrackball
-              theme={theme}
               yaw={spatialState.yaw}
               pitch={spatialState.pitch}
               soundEnabled={soundEnabled}
-              size={isBiggerUI ? 214 : 196}
+              size={isBiggerUI ? 160 : 112}
               onDragStateChange={setIsRollingBall}
               onVelocityChange={(v) => {
                 activeVelocityRef.current = v;
               }}
               onRotate={(deltaYaw, deltaPitch) => {
-                const sens = (sensitivity || 0.5) * 1.5;
                 onUpdateSpatial((prev) => ({
                   ...prev,
                   yaw: (prev.yaw + deltaYaw) % 360,
@@ -1355,82 +1191,125 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
 
                 if (engine) {
                   if (targetScope === 'active_layer' || targetScope === 'model' || targetScope === 'strokes') {
-                    engine.rotateTrackball(deltaYaw * sens, -deltaPitch * sens, targetScope);
+                    engine.rotateTrackball(deltaYaw * 0.8, -deltaPitch * 0.8, targetScope);
                   } else {
-                    engine.orbitCamera(-deltaYaw * 0.005 * sens, -deltaPitch * 0.005 * sens);
+                    engine.orbitCamera(-deltaYaw * 0.015, -deltaPitch * 0.015);
                   }
                 }
               }}
             />
           </div>
         )}
+
+        {/* MODE 3: RADIAL SCRUBBER DIAL */}
+        {subMode === 'dial' && (
+          <div
+            ref={dialRef}
+            id="paperrocket-radial-dial"
+            onPointerDown={handleDialPointerDown}
+            onPointerMove={(e) => {
+              if (isDialDragging) handleDialPointer(e);
+            }}
+            onPointerUp={handleDialPointerUp}
+            className={`relative ${
+              isBiggerUI ? 'w-44 h-44' : 'w-32 h-32'
+            } rounded-full flex items-center justify-center cursor-pointer z-20`}
+          >
+            {/* Radial tick marks around dial */}
+            {Array.from({ length: 24 }).map((_, i) => {
+              const deg = (i / 24) * 360;
+              const isActive = (spatialState.brushSize / 50) * 360 >= deg;
+              const tickOffset = isBiggerUI ? 68 : 46;
+              return (
+                <div
+                  key={i}
+                  className={`absolute w-0.5 ${isBiggerUI ? 'h-3' : 'h-2'} rounded-full transition-colors ${
+                    isActive ? 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]' : 'bg-neutral-700/60'
+                  }`}
+                  style={{
+                    transform: `rotate(${deg}deg) translateY(-${tickOffset}px)`,
+                  }}
+                />
+              );
+            })}
+
+            {/* Center Dial Hub with Mode Switcher & Real-time Readout */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                playHapticSound('click', soundEnabled);
+                setDialMode((prev) => (prev === 'brush_size' ? 'zoom' : prev === 'zoom' ? 'rotate' : 'brush_size'));
+              }}
+              className={`${
+                isBiggerUI ? 'w-24 h-24' : 'w-18 h-18'
+              } rounded-full bg-white text-neutral-950 shadow-2xl flex flex-col items-center justify-center font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer select-none`}
+              title="Click to cycle: Brush Size ➔ Camera Zoom ➔ 3D Rotate"
+            >
+              <span className={`${isBiggerUI ? 'text-[9px]' : 'text-[7px]'} font-extrabold tracking-wider text-blue-600 uppercase`}>
+                {dialMode === 'brush_size' ? 'BRUSH' : dialMode === 'zoom' ? 'ZOOM' : 'ROTATE'}
+              </span>
+              <span className={`${isBiggerUI ? 'text-lg' : 'text-xs'} leading-tight font-extrabold text-neutral-950`}>
+                {dialMode === 'brush_size'
+                  ? `${((brushSettings?.size || 0.035) * 30).toFixed(1)}px`
+                  : dialMode === 'zoom'
+                  ? `${Math.round((spatialState.scale || 1.0) * 100)}%`
+                  : `${Math.round(spatialState.roll || 0)}°`}
+              </span>
+              <div className={`${isBiggerUI ? 'w-8 h-0.5' : 'w-5 h-0.5'} bg-neutral-200 my-0.5`} />
+              <span className={`${isBiggerUI ? 'text-[9px]' : 'text-[7px]'} text-neutral-400 font-mono leading-none`}>
+                {spatialState.brushSize} / 50
+              </span>
+            </button>
+          </div>
+        )}
       </motion.div>
+
+        {/* Bottom-Left Settings Toggle (Repositioned into bottom-left corner) */}
+        <button
+          id="paperrocket-settings-btn"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            playHapticSound('click', soundEnabled);
+            setShowMenu((prev) => !prev);
+            setShowHiddenPhysicsPanel(false);
+          }}
+          className={`absolute bottom-2.5 left-2.5 z-30 w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer backdrop-blur-md ${
+            showMenu
+              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-sm'
+              : 'bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white border border-white/[0.06] shadow-sm'
+          }`}
+          title="Settings & Options"
+          aria-label="Wheel settings"
+        >
+          <MoreHorizontal className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Bottom-Right Minimize Toggle (Repositioned into bottom-right corner) */}
+        <button
+          id="paperrocket-minimize-btn"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            playHapticSound('pop', soundEnabled);
+            setIsOpen(false);
+            setShowMenu(false);
+            setShowHiddenPhysicsPanel(false);
+          }}
+          className="absolute bottom-2.5 right-2.5 z-30 w-7 h-7 rounded-xl bg-white/[0.08] hover:bg-white/[0.16] text-neutral-400 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/[0.06] shadow-sm backdrop-blur-md"
+          title="Minimize to Dot"
+          aria-label="Minimize wheel"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
       </div>
 
-      {/* Right Vertical Bar: NavigatorHeader (Tabs, Target Selector, Action Icons) */}
-      <NavigatorHeader
-        mode={mode}
-        onModeChange={(m) => onModeChange(m as SpatialMode)}
-        tabs={[
-          { id: '3d', label: 'Move' },
-          { id: 'tactile_ball', label: 'Rotate' },
-        ]}
-        theme={theme}
-        isLocked={isLocked}
-        onLockToggle={handleLockToggle}
-        onReset={() => {
-          setRotateRingAngle(0);
-          onUpdateSpatial(() => ({
-            x: 0,
-            y: 0,
-            z: 0,
-            roll: 0,
-            pitch: 18,
-            yaw: -24,
-            scale: 1.0,
-          }));
-          onReset?.();
-        }}
-        isCollapsed={false}
-        onCollapseToggle={() => {}}
-        onClose={onClose}
-        onMinimize={() => {
-          playHapticSound('pop', soundEnabled);
-          setIsOpen(false);
-          setShowMenu(false);
-          setShowHiddenPhysicsPanel(false);
-        }}
-        targetName={activeTargetName}
-        layers={layers}
-        activeLayerId={activeLayerId}
-        onSelectLayer={onSelectLayer}
-        models={models}
-        activeModelId={activeModelId}
-        onSelectModel={onSelectModel}
-        targetScope={targetScope}
-        onSelectTargetScope={onSelectTargetScope}
-        accessibilityMode={accessibilityMode}
-        onAccessibilityModeToggle={handleAccessibilityToggle}
-        onHeaderDragStart={handleCardDragStart}
-        rotationAxis={rotationAxis}
-        onRotationAxisChange={setRotationAxis}
-        onCopy={onCopy}
-        onPaste={onPaste}
-        clipboardCount={clipboardCount}
-        scaleFactor={scaleFactor}
-        onScaleCycle={handleScaleCycle}
-        sensitivity={sensitivity}
-        onSensitivityChange={(s) => {
-          onSensitivityChange?.(s);
-          if (engine) engine.setNavigatorSensitivity(s);
-        }}
-      />
-
-      {/* Paper Rocket Quick Settings Popover anchored at Bottom */}
+      {/* PaperRockets Quick Settings Popover anchored at Bottom */}
       <AnimatePresence>
         {showMenu && (
           <motion.div
-            id="paper-rocket-settings-popover"
+            id="paperrocket-settings-popover"
             initial={{ opacity: 0, scale: 0.92, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
@@ -1582,7 +1461,7 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
       <AnimatePresence>
         {showHiddenPhysicsPanel && (
           <motion.div
-            id="paper-rocket-hidden-physics-panel"
+            id="paperrocket-hidden-physics-panel"
             initial={{ opacity: 0, scale: 0.95, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
@@ -1782,22 +1661,39 @@ export const PaperRocketTactileWheel: React.FC<PaperRocketTactileWheelProps> = (
         )}
       </AnimatePresence>
 
+      {/* Corner Drag-to-Resize Handle ("Resizing Thingy") */}
+      <div
+        id="paperrocket-wheel-resize-handle"
+        onPointerDown={handleResizeStart}
+        onDoubleClick={handleScaleCycle}
+        className="absolute bottom-0 right-0 z-40 w-6 h-6 flex items-end justify-end p-1 cursor-nwse-resize group transition-transform active:scale-125 select-none"
+        title="Drag corner to resize wheel controller (Double-click to cycle presets)"
+      >
+        <div className="w-3.5 h-3.5 flex flex-col justify-end items-end gap-[1.5px] opacity-40 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="flex gap-[1.5px]">
+            <div className="w-1 h-1 rounded-full bg-white/70" />
+          </div>
+          <div className="flex gap-[1.5px]">
+            <div className="w-1 h-1 rounded-full bg-white/70" />
+            <div className="w-1 h-1 rounded-full bg-white/70" />
+          </div>
+          <div className="flex gap-[1.5px]">
+            <div className="w-1 h-1 rounded-full bg-white/90" />
+            <div className="w-1 h-1 rounded-full bg-white/90" />
+            <div className="w-1 h-1 rounded-full bg-white/90" />
+          </div>
+        </div>
+      </div>
+
       {/* Live Scale Percentage Badge while Resizing */}
       {isResizing && (
         <div className="absolute top-2 right-12 z-50 px-2 py-0.5 rounded-full bg-sky-500 text-black font-mono font-bold text-[10px] shadow-lg pointer-events-none animate-in fade-in duration-100">
           {Math.round(scaleFactor * 100)}%
         </div>
       )}
-
-      {/* Invisible Corner Drag Resize Hit Zone - ZERO VISIBLE DOTS */}
-      <div
-        id="paper-rocket-corner-resize-hit-zone"
-        onPointerDown={handleResizeStart}
-        className="absolute -bottom-1 -right-1 w-6 h-6 cursor-nwse-resize z-40 select-none touch-none"
-        title="Drag corner to scale tool"
-        aria-label="Drag corner to scale tool"
-      />
     </aside>
   );
 };
+
+
 

@@ -32,6 +32,11 @@ import { ScreenCenterCrosshair } from './components/ScreenCenterCrosshair';
 import { FpsCounter } from './components/FpsCounter';
 import { DeferredPanel } from './components/DeferredPanel';
 import { publishCameraPose, publishFps } from './core/telemetryStore';
+import { useUiMode } from './core/uiModeStore';
+import { useOpenSheet } from './components/play/sheetStore';
+import { PlayTopStrip } from './components/play/PlayTopStrip';
+import { PlayDock, PlayToolId, playToolSettings } from './components/play/PlayDock';
+import { PlayContextStrip } from './components/play/PlayContextStrip';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -170,8 +175,10 @@ export default function App() {
       const saved = localStorage.getItem('mody_studio_theme');
       if (saved === 'dark' || saved === 'light') return saved;
     } catch (_) {}
-    return 'dark';
+    return 'light';
   });
+  const uiMode = useUiMode();
+  const openSheet = useOpenSheet();
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -672,6 +679,16 @@ export default function App() {
     engine?.setLightingPreset(next);
   };
 
+  /**
+   * Play mode's four tools each map to one engine state. The mapping lives in
+   * PlayDock so the dock and this handler cannot drift apart.
+   */
+  const handlePlayToolSelect = useCallback((id: PlayToolId) => {
+    const { tool: nextTool, patch } = playToolSettings(id);
+    setTool(nextTool);
+    setBrushSettings((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   const handleResetCamera = () => {
     engine?.snapToView('isometric');
   };
@@ -822,7 +839,7 @@ export default function App() {
   return (
     <div
       className={`relative w-full h-full overflow-hidden select-none transition-colors duration-200 ${
-        theme === 'light' ? 'bg-[#f6f7f9] text-neutral-800' : 'bg-[#0c0e14] text-neutral-100'
+        theme === 'light' ? 'bg-[#ffffff] text-neutral-800' : 'bg-[#0c0e14] text-neutral-100'
       }`}
     >
       {/* Main 3D Viewport */}
@@ -859,7 +876,35 @@ export default function App() {
         onStylusDetected={setIsStylusDetected}
       />
 
+      {/* ================= PLAY MODE (default surface) ================= */}
+      {uiMode === 'play' && (
+        <>
+          <PlayTopStrip
+            projectName={activeModelName}
+            onOpenToybox={() => setIsModelsOpen(true)}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            theme={theme}
+          />
+          <PlayDock
+            tool={tool}
+            shapeSnapping={brushSettings.shapeSnapping ?? false}
+            onSelect={handlePlayToolSelect}
+            theme={theme}
+          />
+          <PlayContextStrip
+            brushSettings={brushSettings}
+            setBrushSettings={setBrushSettings}
+            theme={theme}
+          />
+        </>
+      )}
+
+      {/* ================= PRO MODE (the full studio) ================= */}
       {/* Vertical Tool Dock & Navigation Rail (With Integrated Studio Menu Actions) */}
+      {uiMode === 'pro' && (
       <Toolbar
         tool={tool}
         setTool={setTool}
@@ -957,9 +1002,10 @@ export default function App() {
         onSetTheme={handleSetTheme}
         onOpenSandbox={() => setShowSandbox(true)}
       />
+      )}
 
-      {/* Frame-Per-Second Counter: Bottom-Left with responsive mobile adjustment (Requirement 5) */}
-      <FpsCounter uiScale={uiScale} />
+      {/* Frame-Per-Second Counter. Pro only — Play mode shows no telemetry. */}
+      {uiMode === 'pro' && <FpsCounter uiScale={uiScale} />}
 
       {/* Floating Restore Buttons when Controllers are Hidden */}
       {activeController === 'hidden' && (
@@ -1001,7 +1047,9 @@ export default function App() {
       )}
 
       {/* 3D Navigation Controllers: Strictly ONE controller at a time (Never stack both) */}
-      {gizmoMode !== 'Hidden' && activeController === 'navigator' && (
+      {/* Zone C. In Play a raised sheet owns the bottom of the screen, so the
+          navigator steps aside rather than fighting it for the same corner. */}
+      {gizmoMode !== 'Hidden' && activeController === 'navigator' && !(uiMode === 'play' && openSheet !== null) && (
         <TransformNavigator
           initialMode="2d"
           theme={theme}

@@ -619,6 +619,9 @@ export class SampleModelFactory {
       roughness: 0.95,
       metalness: 0.02,
       side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
@@ -629,17 +632,17 @@ export class SampleModelFactory {
     mesh.receiveShadow = true;
     group.add(mesh);
 
-    // Subtle edge border outline for clean visibility
+    // Subtle edge border outline for clean visibility (50% lighter)
     const edges = new THREE.EdgesGeometry(geom);
     const line = new THREE.LineSegments(
       edges,
-      new THREE.LineBasicMaterial({ color: 0x94a3b8, linewidth: 2 })
+      new THREE.LineBasicMaterial({ color: 0xcbd5e1, linewidth: 1, transparent: true, opacity: 0.5 })
     );
     group.add(line);
 
-    // Slight dynamic perspective tilt
-    group.rotation.x = -Math.PI * 0.15;
-    group.rotation.y = Math.PI * 0.1;
+    // Vertical orientation
+    group.rotation.x = 0;
+    group.rotation.y = 0;
 
     return group;
   }

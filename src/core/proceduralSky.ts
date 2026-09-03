@@ -451,7 +451,7 @@ export class ProceduralSkyEngine {
     const requestedId = (typeof presetOrId === 'string' ? presetOrId : presetOrId?.id || '').toLowerCase();
     if (requestedId === 'off') {
       if (this.skyMesh) this.skyMesh.visible = false;
-      this.scene.background = new THREE.Color(0xf6f7f9);
+      this.scene.background = new THREE.Color(0xffffff);
       // Record the off state so getCurrentPreset() reflects reality; callers
       // (theme switching, background selection) test against it.
       this.currentPreset = { ...this.currentPreset, id: 'off' };

@@ -25,5 +25,5 @@
     "noEmit": true
   },
   "include": ["src", "scripts", "vite.config.ts"],
-  "exclude": ["node_modules", "dist", "dist-apk", "src-tauri", "crates"]
+  "exclude": ["node_modules", "dist", "dist-apk", "crates", "src/components/_attic"]
 }

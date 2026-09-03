@@ -434,6 +434,7 @@ export class StudioEngine {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.autoClear = true;
     this.renderer.autoClearStencil = true;
+    this.renderer.setClearColor(0xffffff, 1.0);
 
     // Shadow policy: off entirely on low-power hardware (a single depth pass over
     // the model doubles draw calls for a barely visible result at 1.0 DPR).
@@ -462,7 +463,7 @@ export class StudioEngine {
 
     // 2. Scene Hierarchy (Default Light Studio Theme)
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf6f7f9);
+    this.scene.background = new THREE.Color(0xffffff);
 
     // 3. Camera
     this.camera = new THREE.PerspectiveCamera(
@@ -516,35 +517,33 @@ export class StudioEngine {
       container.clientHeight
     );
 
-    // 6. Grid Helper (Light theme palette)
-    this.gridHelper = new THREE.GridHelper(10, 20, 0xcbd5e1, 0xe2e8f0);
+    // 6. Grid Helper (50% lighter grid)
+    this.gridHelper = new THREE.GridHelper(10, 20, 0xe2e8f0, 0xf1f5f9);
     this.gridHelper.position.y = -1.2;
     this.helperRoot.add(this.gridHelper);
 
-    // 7. Lighting System (Light theme palette with rich three-point illumination)
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
-    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 0.85);
+    // 7. Lighting System (PBR Baseline)
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0xe2e8f0, 0.7);
+    this.hemiLight.position.set(0, 20, 0);
     this.dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
-    this.dirLight1.position.set(6, 10, 6);
-    this.dirLight2 = new THREE.DirectionalLight(0xe0f2fe, 0.9);
-    this.dirLight2.position.set(-6, -2, -6);
+    this.dirLight1.position.set(5, 10, 7);
+    this.dirLight1.castShadow = true;
+    this.dirLight1.shadow.mapSize.width = 2048;
+    this.dirLight1.shadow.mapSize.height = 2048;
+    this.dirLight2 = new THREE.DirectionalLight(0xdbeafe, 0.6);
+    this.dirLight2.position.set(-5, -2, -5);
 
     this.lightsRoot.add(this.ambientLight);
     this.lightsRoot.add(this.hemiLight);
     this.lightsRoot.add(this.dirLight1);
     this.lightsRoot.add(this.dirLight2);
 
-    // Procedural Sky System with Atmospheric Scattering and Synced Lighting.
-    //
-    // The sky dome is a radius-500 sphere drawn first with BackSide culling, so its
-    // atmospheric-scattering fragment shader runs across effectively the whole
-    // screen every frame. That is the single most expensive pass on a fill-rate
-    // limited GPU, so low-power devices start on the flat background instead. The
-    // user can still turn the sky on from the Skybox panel at any time.
+    // Sky engine initialized with off by default for clean white studio background
     this.skyEngine = new ProceduralSkyEngine(this.scene);
     this.skyEngine.setLights(this.dirLight1, this.ambientLight, this.dirLight2);
-    this.skyEnabled = !profile.isLowPower;
-    this.skyEngine.applyPreset(this.skyEnabled ? 'daylight' : 'off');
+    this.skyEnabled = false;
+    this.skyEngine.applyPreset('off');
 
     // Ensure baseline lighting and reflection environment are immediately ready
     this.ensureBaselineLighting();
@@ -914,11 +913,13 @@ export class StudioEngine {
     const targetScale = 2.6 / maxDim;
     obj.scale.setScalar(targetScale);
 
-    // Recenter scaled model at origin
+    // Recenter scaled model in X/Z and snap base flush to ground grid (y = -1.2)
     const scaledBox = new THREE.Box3().setFromObject(obj);
     const scaledCenter = new THREE.Vector3();
     scaledBox.getCenter(scaledCenter);
-    obj.position.sub(scaledCenter);
+    obj.position.x -= scaledCenter.x;
+    obj.position.z -= scaledCenter.z;
+    obj.position.y += (-1.2 - scaledBox.min.y);
     obj.updateMatrixWorld(true);
 
     // Update metadata
@@ -2681,9 +2682,9 @@ export class StudioEngine {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, 1024, 1024);
 
-      // Fine grid subdivisions
-      ctx.strokeStyle = '#e2e8f0'; // slate-200
-      ctx.lineWidth = 2;
+      // Fine grid subdivisions (50% lighter)
+      ctx.strokeStyle = 'rgba(226, 232, 240, 0.5)'; // slate-200 50% lighter
+      ctx.lineWidth = 1.5;
       const step = 1024 / 32;
       for (let x = 0; x <= 1024; x += step) {
         ctx.beginPath();
@@ -2698,9 +2699,9 @@ export class StudioEngine {
         ctx.stroke();
       }
 
-      // Major grid lines (every 4 divisions)
-      ctx.strokeStyle = '#94a3b8'; // slate-400
-      ctx.lineWidth = 3;
+      // Major grid lines (every 4 divisions, 50% lighter)
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)'; // slate-400 50% lighter
+      ctx.lineWidth = 2;
       const majorStep = step * 4;
       for (let x = 0; x <= 1024; x += majorStep) {
         ctx.beginPath();
@@ -2715,9 +2716,9 @@ export class StudioEngine {
         ctx.stroke();
       }
 
-      // Center Origin Crosshair (Amber)
-      ctx.strokeStyle = '#f59e0b'; // amber-500
-      ctx.lineWidth = 5;
+      // Center Origin Crosshair (50% lighter Amber)
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)'; // amber-500 50% lighter
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(512 - 50, 512);
       ctx.lineTo(512 + 50, 512);
@@ -2725,9 +2726,9 @@ export class StudioEngine {
       ctx.lineTo(512, 512 + 50);
       ctx.stroke();
 
-      // Outer bezel border
-      ctx.strokeStyle = '#64748b'; // slate-500
-      ctx.lineWidth = 8;
+      // Outer bezel border (50% lighter Slate)
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)'; // slate-500 50% lighter
+      ctx.lineWidth = 4;
       ctx.strokeRect(4, 4, 1016, 1016);
     }
 
@@ -2741,8 +2742,9 @@ export class StudioEngine {
       roughness: 0.5,
       metalness: 0.0,
       side: THREE.DoubleSide,
-      transparent: false,
-      depthWrite: true,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
     });
     MaterialCache.configureModelMaterial(planeMat);
 
@@ -2750,13 +2752,14 @@ export class StudioEngine {
     planeMesh.name = 'DrawingPlaneCanvas';
     planeMesh.userData.isDrawingPlane = true;
     planeMesh.userData.isDefaultCanvas = true;
-    planeMesh.position.copy(position);
-    planeMesh.rotation.x = -Math.PI / 2; // Lay flat on the ground
+    // Snap base flush on ground grid (y = -1.2)
+    planeMesh.position.set(position.x, -1.2 + height / 2, position.z);
+    planeMesh.rotation.x = 0; // Vertical upright pane
     planeMesh.receiveShadow = true;
 
-    // Edge highlight border
+    // Edge highlight border (50% lighter / translucent)
     const edges = new THREE.EdgesGeometry(planeGeom);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2 });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 1, transparent: true, opacity: 0.5 });
     const wireframe = new THREE.LineSegments(edges, lineMat);
     wireframe.name = 'DrawingPlaneWireframe';
     planeMesh.add(wireframe);
@@ -4055,14 +4058,14 @@ export class StudioEngine {
     const isSkyActive = this.skyEngine && this.skyEngine.getCurrentPreset() && this.skyEngine.getCurrentPreset().id !== 'off';
     if (theme === 'light') {
       if (!isSkyActive) {
-        this.scene.background = new THREE.Color(0xf6f7f9);
+        this.scene.background = new THREE.Color(0xffffff);
       } else {
         this.scene.background = null;
       }
       if (this.gridHelper) {
         this.helperRoot.remove(this.gridHelper);
         this.gridHelper.geometry.dispose();
-        this.gridHelper = new THREE.GridHelper(10, 20, 0xcbd5e1, 0xe2e8f0);
+        this.gridHelper = new THREE.GridHelper(10, 20, 0xe2e8f0, 0xf1f5f9);
         this.gridHelper.position.y = -1.2;
         this.helperRoot.add(this.gridHelper);
       }
@@ -4078,14 +4081,14 @@ export class StudioEngine {
     } else {
       // Comfortable medium light-greyish slate dark theme
       if (!isSkyActive) {
-        this.scene.background = new THREE.Color(0x2d323b);
+        this.scene.background = new THREE.Color(0xffffff);
       } else {
         this.scene.background = null;
       }
       if (this.gridHelper) {
         this.helperRoot.remove(this.gridHelper);
         this.gridHelper.geometry.dispose();
-        this.gridHelper = new THREE.GridHelper(10, 20, 0x475569, 0x334155);
+        this.gridHelper = new THREE.GridHelper(10, 20, 0xe2e8f0, 0xf1f5f9);
         this.gridHelper.position.y = -1.2;
         this.helperRoot.add(this.gridHelper);
       }
