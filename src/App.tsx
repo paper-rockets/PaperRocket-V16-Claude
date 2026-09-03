@@ -40,6 +40,7 @@ import { PlayContextStrip } from './components/play/PlayContextStrip';
 import { BrushSheet } from './components/play/BrushSheet';
 import { MagicFxSheet } from './components/play/MagicFxSheet';
 import { FirstRunOverlay } from './components/play/FirstRunOverlay';
+import { Toybox } from './components/play/Toybox';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -183,6 +184,7 @@ export default function App() {
   const uiMode = useUiMode();
   const openSheet = useOpenSheet();
   const hasOnboarded = useHasOnboarded();
+  const [isToyboxOpen, setIsToyboxOpen] = useState<boolean>(false);
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -885,7 +887,7 @@ export default function App() {
         <>
           <PlayTopStrip
             projectName={activeModelName}
-            onOpenToybox={() => setIsModelsOpen(true)}
+            onOpenToybox={() => setIsToyboxOpen(true)}
             onUndo={handleUndo}
             onRedo={handleRedo}
             canUndo={canUndo}
@@ -917,7 +919,15 @@ export default function App() {
               />
             }
           />
-          <FirstRunOverlay onOpenToybox={() => setIsModelsOpen(true)} theme={theme} />
+          <FirstRunOverlay onOpenToybox={() => setIsToyboxOpen(true)} theme={theme} />
+          <Toybox
+            isOpen={isToyboxOpen}
+            engine={engine}
+            onClose={() => setIsToyboxOpen(false)}
+            onSpawned={(name) => setActiveModelName(name)}
+            setBrushSettings={setBrushSettings}
+            theme={theme}
+          />
         </>
       )}
 
