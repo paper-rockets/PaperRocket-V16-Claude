@@ -31,8 +31,18 @@ export const PlaySheet: React.FC<PlaySheetProps> = ({ id, title, children, theme
 
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target as Node | null;
-      if (target && sheetRef.current && !sheetRef.current.contains(target)) {
-        closeSheet();
+      if (!target || !sheetRef.current || sheetRef.current.contains(target)) return;
+
+      closeSheet();
+
+      // Dismissing a sheet must not also leave a mark. Without this, tapping the
+      // canvas to put a menu away draws a dot exactly where you tapped — which is
+      // baffling if you are seven. Swallow only canvas taps: taps on other chrome
+      // (a tool button, the top strip) should still do the thing you tapped.
+      const el = target instanceof Element ? target : (target as Node).parentElement;
+      if (el && el.closest('canvas')) {
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
 

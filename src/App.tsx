@@ -32,11 +32,14 @@ import { ScreenCenterCrosshair } from './components/ScreenCenterCrosshair';
 import { FpsCounter } from './components/FpsCounter';
 import { DeferredPanel } from './components/DeferredPanel';
 import { publishCameraPose, publishFps } from './core/telemetryStore';
-import { useUiMode } from './core/uiModeStore';
+import { useUiMode, useHasOnboarded } from './core/uiModeStore';
 import { useOpenSheet } from './components/play/sheetStore';
 import { PlayTopStrip } from './components/play/PlayTopStrip';
 import { PlayDock, PlayToolId, playToolSettings } from './components/play/PlayDock';
 import { PlayContextStrip } from './components/play/PlayContextStrip';
+import { BrushSheet } from './components/play/BrushSheet';
+import { MagicFxSheet } from './components/play/MagicFxSheet';
+import { FirstRunOverlay } from './components/play/FirstRunOverlay';
 import { Spline, Compass, Disc, LayoutGrid } from 'lucide-react';
 
 /**
@@ -179,6 +182,7 @@ export default function App() {
   });
   const uiMode = useUiMode();
   const openSheet = useOpenSheet();
+  const hasOnboarded = useHasOnboarded();
   const [tool, setTool] = useState<ToolType>('brush');
   const [brushSettings, setBrushSettings] = useState<BrushSettings>(DEFAULT_BRUSH_SETTINGS);
   const [postSettings, setPostSettings] = useState<PostProcessSettings>(DEFAULT_POST_SETTINGS);
@@ -898,7 +902,22 @@ export default function App() {
             brushSettings={brushSettings}
             setBrushSettings={setBrushSettings}
             theme={theme}
+            brushSheet={
+              <BrushSheet
+                brushSettings={brushSettings}
+                setBrushSettings={setBrushSettings}
+                theme={theme}
+              />
+            }
+            fxSheet={
+              <MagicFxSheet
+                brushSettings={brushSettings}
+                setBrushSettings={setBrushSettings}
+                theme={theme}
+              />
+            }
           />
+          <FirstRunOverlay onOpenToybox={() => setIsModelsOpen(true)} theme={theme} />
         </>
       )}
 
@@ -1049,7 +1068,7 @@ export default function App() {
       {/* 3D Navigation Controllers: Strictly ONE controller at a time (Never stack both) */}
       {/* Zone C. In Play a raised sheet owns the bottom of the screen, so the
           navigator steps aside rather than fighting it for the same corner. */}
-      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'navigator') && !(uiMode === 'play' && openSheet !== null) && (
+      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'navigator') && !(uiMode === 'play' && (openSheet !== null || !hasOnboarded)) && (
         <TransformNavigator
           initialMode="2d"
           theme={theme}
