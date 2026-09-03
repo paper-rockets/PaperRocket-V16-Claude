@@ -44,6 +44,7 @@ import { Toybox } from './components/play/Toybox';
 import { PlayStats } from './components/play/PlayStats';
 import { PlaySettingsSheet } from './components/play/PlaySettingsSheet';
 import { PlayImporter } from './components/play/PlayImporter';
+import { ShapesSheet } from './components/play/ShapesSheet';
 import { Spline, Compass, Disc, LayoutGrid, ChevronLeft } from 'lucide-react';
 
 /**
@@ -939,6 +940,11 @@ export default function App() {
               setDroppedFilesForConverter(null);
               setIsConverterOpen(true);
             }}
+            theme={theme}
+          />
+          <ShapesSheet
+            brushSettings={brushSettings}
+            setBrushSettings={setBrushSettings}
             theme={theme}
           />
           <PlaySettingsSheet

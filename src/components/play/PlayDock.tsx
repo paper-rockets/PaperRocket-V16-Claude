@@ -1,5 +1,5 @@
 import React, { useRef, useCallback } from 'react';
-import { Brush, Shapes, Eraser, Move } from 'lucide-react';
+import { Brush, Shapes, Eraser } from 'lucide-react';
 import { ToolType, BrushSettings } from '../../types';
 import { toggleSheet, openSheetId } from './sheetStore';
 import { haptics } from '../../utils/haptics';
@@ -13,7 +13,7 @@ import { haptics } from '../../utils/haptics';
  * a way to undo a mark physically, and a way to move things.
  */
 
-export type PlayToolId = 'draw' | 'shape' | 'zap' | 'move';
+export type PlayToolId = 'draw' | 'shape' | 'zap';
 
 interface PlayDockProps {
   tool: ToolType;
@@ -22,17 +22,23 @@ interface PlayDockProps {
   theme?: 'light' | 'dark';
 }
 
+/**
+ * Three tools, not four.
+ *
+ * "Move" set tool='select', whose whole behaviour is to pick a stroke and show a
+ * toast saying "press Del or Trash to remove" — neither of which exists in Play.
+ * Meanwhile the turn wheel already moves things. So it occupied a quarter of the
+ * rail to do nothing you could act on, which is exactly why it felt redundant.
+ */
 const TOOLS: { id: PlayToolId; label: string; icon: React.FC<{ className?: string }>; sheet?: 'brushes' | 'shapes' }[] = [
   { id: 'draw', label: 'Draw', icon: Brush, sheet: 'brushes' },
   { id: 'shape', label: 'Shape', icon: Shapes, sheet: 'shapes' },
   { id: 'zap', label: 'Super Zap', icon: Eraser },
-  { id: 'move', label: 'Move', icon: Move },
 ];
 
 /** Which Play tool the current engine state corresponds to. */
 export function activePlayTool(tool: ToolType, shapeSnapping: boolean): PlayToolId {
   if (tool === 'eraser') return 'zap';
-  if (tool === 'select' || tool === 'pointer') return 'move';
   if (shapeSnapping) return 'shape';
   return 'draw';
 }
@@ -43,12 +49,10 @@ export function playToolSettings(id: PlayToolId): { tool: ToolType; patch: Parti
     case 'draw':
       return { tool: 'brush', patch: { shapeSnapping: false, straightLineMode: false } };
     case 'shape':
-      return { tool: 'brush', patch: { shapeSnapping: true, straightLineMode: false } };
+      return { tool: 'brush', patch: { shapeSnapping: true } };
     case 'zap':
       // Play only ever vacuums: one drag removes whole strokes. Cutout stays in Pro.
       return { tool: 'eraser', patch: { eraserMode: 'vacuum', shapeSnapping: false } };
-    case 'move':
-      return { tool: 'select', patch: { shapeSnapping: false } };
   }
 }
 

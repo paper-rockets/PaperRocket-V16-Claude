@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { BrushSettings } from '../../types';
-import { PLAY_PALETTE, findSwatch } from '../../presets/playPalette';
+import { MOODS, DEFAULT_MOOD_ID, findMood } from '../../presets/playMoods';
 import { toggleSheet, closeSheet } from './sheetStore';
 import { PlaySheet } from './PlaySheet';
 import { haptics } from '../../utils/haptics';
@@ -42,7 +42,8 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
 }) => {
   const isLight = theme === 'light';
   const colour = brushSettings.color || '#22D3EE';
-  const swatch = findSwatch(colour);
+  const [moodId, setMoodId] = React.useState<string>(DEFAULT_MOOD_ID);
+  const mood = findMood(moodId);
   const activeSize = SIZES.reduce((best, s) =>
     Math.abs(s.value - brushSettings.size) < Math.abs(best.value - brushSettings.size) ? s : best
   );
@@ -91,7 +92,7 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
             className="w-10 h-10 rounded-xl border-2 border-white/30 shadow-inner"
             style={{ backgroundColor: colour }}
           />
-          <span className="text-xs font-bold">{swatch?.name ?? 'Colour'}</span>
+          <span className="text-xs font-bold">Colour</span>
         </button>
 
         {/* Size */}
@@ -127,25 +128,56 @@ export const PlayContextStrip: React.FC<PlayContextStripProps> = ({
 
       {/* --- Sheets --- */}
 
-      <PlaySheet id="colour" title="Colour" theme={theme}>
-        <div className="grid grid-cols-8 gap-2">
-          {PLAY_PALETTE.map((s) => {
-            const selected = s.hex.toLowerCase() === colour.toLowerCase();
+      <PlaySheet id="colour" title="Colour" theme={theme} tall>
+        {/* Pick a feeling first, then a colour from it. Every colour inside a
+            mood is generated in even perceptual steps, so they already agree
+            with each other — no wheel, no harmony rules, nothing to operate. */}
+        <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1">
+          {MOODS.map((m) => {
+            const active = m.id === moodId;
             return (
               <button
-                key={s.hex}
+                key={m.id}
                 type="button"
-                onClick={() => pickColour(s.hex, s.name)}
-                title={s.name}
-                aria-label={s.name}
-                className={`aspect-square rounded-full transition-all active:scale-90 border-2
-                  ${selected ? 'ring-4 ring-sky-400 border-white scale-105' : 'border-white/20'}`}
-                style={{ backgroundColor: s.hex, minHeight: 48 }}
+                onClick={() => {
+                  haptics.trigger('light');
+                  setMoodId(m.id);
+                }}
+                className={`shrink-0 rounded-2xl border px-3 py-2 transition-all active:scale-95 ${
+                  active
+                    ? 'border-sky-400 ring-2 ring-sky-400'
+                    : isLight
+                      ? 'border-neutral-200'
+                      : 'border-neutral-800'
+                }`}
+              >
+                <span className="flex gap-0.5 mb-1.5">
+                  {m.colors.filter((_, i) => i % 2 === 0).map((c) => (
+                    <span key={c} className="w-3 h-6 rounded-sm" style={{ backgroundColor: c }} />
+                  ))}
+                </span>
+                <span className="text-[11px] font-bold">{m.name}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-4 gap-2.5 mt-1">
+          {mood.colors.map((hex) => {
+            const selected = hex.toLowerCase() === colour.toLowerCase();
+            return (
+              <button
+                key={hex}
+                type="button"
+                onClick={() => pickColour(hex, mood.name)}
+                aria-label={`${mood.name} colour`}
+                className={`aspect-square rounded-2xl transition-all active:scale-90 border-2
+                  ${selected ? 'ring-4 ring-sky-400 border-white scale-105' : 'border-white/15'}`}
+                style={{ backgroundColor: hex, minHeight: 52 }}
               />
             );
           })}
         </div>
-        <p className="mt-3 text-xs opacity-60">{swatch?.name ?? colour}</p>
       </PlaySheet>
 
       <PlaySheet id="size" title="Brush size" theme={theme}>
