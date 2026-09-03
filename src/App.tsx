@@ -1068,7 +1068,7 @@ export default function App() {
       {/* 3D Navigation Controllers: Strictly ONE controller at a time (Never stack both) */}
       {/* Zone C. In Play a raised sheet owns the bottom of the screen, so the
           navigator steps aside rather than fighting it for the same corner. */}
-      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'navigator') && !(uiMode === 'play' && (openSheet !== null || !hasOnboarded)) && (
+      {uiMode === 'pro' && gizmoMode !== 'Hidden' && activeController === 'navigator' && (
         <TransformNavigator
           initialMode="2d"
           theme={theme}
@@ -1107,7 +1107,7 @@ export default function App() {
         />
       )}
 
-      {uiMode === 'pro' && gizmoMode !== 'Hidden' && activeController === 'tactile' && (
+      {gizmoMode !== 'Hidden' && (uiMode === 'play' || activeController === 'tactile') && !(uiMode === 'play' && (openSheet !== null || !hasOnboarded)) && (
         <PaperRocketTactileWheel
           engine={engine}
           theme={theme}
